@@ -1,0 +1,8 @@
+v 1.0.0
+d Materials by Caspar Kaiser
+d Warwick Business School
+d caspar.kaiser@wbs.ac.uk
+
+d 'REVERSALS': Robust Analysis of Scale Transformations in Ordinal Data
+
+p reversals
