@@ -18,6 +18,12 @@ python query
 ```
 Do feel free to contact me (caspar.kaiser@wbs.ac.uk) in case you get stuck. 
 
+You can install the package from Stata by running:
+
+```stata
+ado uninstall reversals
+```
+
 ## Commands
 
 ### `coeff_reverser`
