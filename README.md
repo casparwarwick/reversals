@@ -8,6 +8,16 @@ This Stata package implements the methodology from Kaiser & Lepinteur (2025; htt
 ```stata
 net install reversals, from(https://raw.githubusercontent.com/casparwarwick/reversals/main/)
 ```
+
+Note that python (including the SciPy and NumPy packages) need to be available in Stata (unless you specifiy `pythonno`).
+
+You can check the availability of Python in Stata by typing:
+
+```stata
+python query
+```
+Do feel free to contact me (caspar.kaiser@wbs.ac.uk) in case you get stuck. 
+
 ## Commands
 
 ### `coeff_reverser`
