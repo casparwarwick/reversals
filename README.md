@@ -9,7 +9,7 @@ This Stata package implements the methodology from Kaiser & Lepinteur (2025; htt
 net install reversals, from(https://raw.githubusercontent.com/casparwarwick/reversals/main/)
 ```
 
-Note that python (including the SciPy and NumPy packages) need to be available in Stata (unless you specifiy `pythonno`).
+Note that python (including the SciPy and NumPy packages) needs to be available in Stata (unless you specifiy `pythonno`).
 
 You can check the availability of Python in Stata by typing:
 
@@ -32,21 +32,11 @@ Tests coefficient robustness to scale transformations using one of two approache
 - **Python optimization** (default): Uses Python to find minimal-cost transformations via global optimization
 - **Exponential search** (`pythonno` option): Searches over exponential transformations f(y)=exp(c*y).
 
-**Basic Syntax:**
-```stata
-coeff_reverser varlist [if] [in], [options]
-```
-
 ### `mrs_reverser` 
 Tests coefficient ratio stability to scale transformations:
 
 - Requires specifying one denominator variable via `denom(varlist)` option
 - Returns original ratio, min/max bounds, and cost to achieve target ratio
-
-**Basic Syntax:**
-```stata  
-mrs_reverser varlist [if] [in], denom(varlist) [options]
-```
 
 ## Requirements
 
