@@ -98,7 +98,7 @@ The framework applies to any bounded ordered scale (wellbeing, risk preferences,
 
 If you use this package, please cite:
 
-Kaiser, C. & Lepinteur, A. (2025). "Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data." *Journal of Applied Econometrics* (forthcoming).
+Kaiser, C. & Lepinteur, A. (2025). "Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data." Working paper.
 
 ## Author
 
