@@ -307,7 +307,7 @@ program coeff_reverser, rclass
 			*3.4 Do the substantive Python bits
 			*-------------------------------------
 			
-			noi python script "$dopath/sign_reversal_cost_minimizer.py"
+			noi python script "`c(sysdir_plus)'py/sign_reversal_cost_minimizer.py"
 			
 			*-------------------------------------
 			*3.5 Get results into the right variables
@@ -395,7 +395,7 @@ program coeff_reverser, rclass
 			*Clear Python environment and any existing result matrices
 			python clear
 			cap matrix drop _orig _costs _bds _min_pval _max_pval
-			noi python script "$dopath/p_value_cost_minimizer.py"
+			noi python script "`c(sysdir_plus)'py/p_value_cost_minimizer.py"
 			
 			*Get results from Python and store in temp matrices
 			tempname costs_pval_python orig_pval_python

@@ -204,7 +204,8 @@ program mrs_reverser, rclass
 		*5.1 Run Python optimization
 		*-------------------------------------
 		
-		python script "$dopath/mrs_reverser_python.py"
+		python script "`c(sysdir_plus)'py/mrs_reverser_python.py"
+		
 	}
 	else {
 		*-------------------------------------
