@@ -29,7 +29,7 @@ ado uninstall reversals
 ### `coeff_reverser`
 Tests coefficient robustness to scale transformations using one of two approaches:
 
-- **Python optimization** (default): Uses Python to find minimal-cost transformations via global optimization
+- **Python optimization** (default): Uses Python to find minimal-cost transformations via numerical optimization.
 - **Exponential search** (`pythonno` option): Searches over exponential transformations f(y)=exp(c*y).
 
 ### `mrs_reverser` 
@@ -55,7 +55,7 @@ sysuse auto, clear
 reg price mpg weight
 
 * Test coefficient robustness
-coeff_reverser, pvalue
+coeff_reverser
 
 * Test ratio robustness  
 mrs_reverser, denom(weight)
@@ -64,8 +64,8 @@ mrs_reverser, denom(weight)
 ## Files
 
 ## Core Commands
-- `coeff_reverser.ado`: Main coefficient reversal analysis command
-- `mrs_reverser.ado`: Main coefficient ratio (MRS) reversal analysis command  
+- `coeff_reverser.ado`: Main coefficient reversal command
+- `mrs_reverser.ado`: Main coefficient ratio (MRS) analysis command  
 
 ## Help Files
 - `coeff_reverser.sthlp`
