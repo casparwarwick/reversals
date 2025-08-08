@@ -28,7 +28,7 @@ python query
 ```
 If Python and/or the NumPy and SciPy libraries are unavailable, both `coeff_reverser` and `mrs_reverser` will revert to `pythonno`.
 
-If Numpy and/or SciPy are not installed to your Python environment, you should be able to do so by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
+If Numpy and/or SciPy are not installed to your Python environment, you should be able to install them by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
 
 If you get stuck do feel free to contact me (caspar.kaiser@wbs.ac.uk). 
 
