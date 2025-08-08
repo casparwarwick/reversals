@@ -30,9 +30,19 @@ program coeff_reverser, rclass
 	*	1.1 Set default behavior and option logic
 	*-------------------------------------
 	
-	* Default: use Python for cost minimization, but check if it works.
+	* Default: use Python for cost minimization, but check if it works. If not, revert to pythonno. 
 	if "`pythonno'" == "" {
-		dis "test"
+		capture python which numpy
+		if _rc != 0 {
+			noi dis "Numpy not available. Reverting to pythonno option."
+			local pythonno "pythonno"
+		}
+		capture python which scipy
+		if _rc != 0 {
+			noi dis "SciPy not available. Reverting to pythonno option."
+			local pythonno "pythonno"
+		}
+		
 	}
 	
 	* IF NOT: Default: use fast routine (unless pythonno + pvalue specified)

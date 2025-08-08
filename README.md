@@ -9,20 +9,36 @@ This Stata package implements the methodology from Kaiser & Lepinteur (2025; htt
 net install reversals, from(https://raw.githubusercontent.com/casparwarwick/reversals/main/)
 ```
 
-Note that Python (including the SciPy and NumPy packages) needs to be available in Stata (unless you specifiy `pythonno`).
+You can uninstall the package from Stata by running:
+
+```stata
+ado uninstall reversals
+```
+
+## Requirements
+
+### Python
+
+Python (including NumPy and SciPy) needs to be available in Stata for full functionality. 
 
 You can check the availability of Python in Stata by typing:
 
 ```stata
 python query
 ```
-Do feel free to contact me (caspar.kaiser@wbs.ac.uk) if you get stuck. 
+If Python and/or the NumPy and SciPy libraries are unavailable, both `coeff_reverser` and `mrs_reverser` will revert to `pythonno`.
 
-You can uninstall the package from Stata by running:
+If Numpy and/or SciPy are not installed to your Python environment, you should be able to do so by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
 
-```stata
-ado uninstall reversals
-```
+If you get stuck do feel free to contact me (caspar.kaiser@wbs.ac.uk). 
+
+### Stata
+
+Tested on Stata 17.0. 
+
+Requires:
+- `estout` by Ben Jann. Can be installed via `ssc install estout`.
+- `matselrc` (from "Yet more matrix commands") by Nick Cox. Can be installed via `net install dm79, from(http://www.stata.com/stb/stb56)`.
 
 ## Commands
 
@@ -37,14 +53,6 @@ Tests coefficient ratio stability to scale transformations:
 
 - Requires specifying one denominator variable via the `denom(varlist)` option.
 - Returns original ratio, min/max bounds, and cost to achieve target ratio.
-
-## Requirements
-
-- **Stata**: Tested on Version 17.0.
-- **Python** with packages:
-  - `numpy`
-  - `scipy` 
-  - `sfi` (Stata Function Interface)
 
 ## Quick Start Example
 
