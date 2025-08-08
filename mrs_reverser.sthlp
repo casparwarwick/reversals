@@ -39,7 +39,7 @@ help for {hi:mrs_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepinteu
 {p 4 4}{cmd:mrs_reverser} analyzes the stability of coefficient ratios (marginal rates of substitution) to monotonic transformations of ordinal dependent variables.
 This implements the methodology developed in Kaiser & Lepinteur (2025) for testing the robustness of relative effect sizes to departures from the linearity assumption in survey scales.
 
-{p 4 4}See Kaiser & Lepinteur (2025; {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440v1}) for details.{p_end}
+{p 4 4}See Kaiser & Lepinteur (2025; {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440}) for details.{p_end}
 
 {marker description}{...}
 {title:Description}
@@ -147,7 +147,7 @@ If the denominator is reversible, ratio bounds become infinite. A warning is dis
 
 {p 4 4} Bond, Timothy N. and Kevin Lang. (2019). The sad truth about happiness scales. {it:Journal of Political Economy}, 127:1629–1640.
 
-{p 4 4} Kaiser, Caspar and Anthony Lepinteur. (2025). Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data. Available at {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440v1}.
+{p 4 4} Kaiser, Caspar and Anthony Lepinteur. (2025). Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data. Available at {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440}.
 
 {p 4 4} Kaiser, Caspar and Maarten Vendrik. (2023). How much can we learn from happiness data? University of Oxford, Mimeo.
 

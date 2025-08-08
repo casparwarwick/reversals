@@ -1,6 +1,6 @@
 # REVERSALS: Robustness Analyses of Scale Transformations in Linear Regressions
 
-This Stata package implements the methodology from Kaiser & Lepinteur (2025; https://arxiv.org/abs/2507.16440v1).
+This Stata package implements the methodology from Kaiser & Lepinteur (2025; https://arxiv.org/abs/2507.16440).
 
 ## Installation
 
@@ -9,16 +9,16 @@ This Stata package implements the methodology from Kaiser & Lepinteur (2025; htt
 net install reversals, from(https://raw.githubusercontent.com/casparwarwick/reversals/main/)
 ```
 
-Note that python (including the SciPy and NumPy packages) needs to be available in Stata (unless you specifiy `pythonno`).
+Note that Python (including the SciPy and NumPy packages) needs to be available in Stata (unless you specifiy `pythonno`).
 
 You can check the availability of Python in Stata by typing:
 
 ```stata
 python query
 ```
-Do feel free to contact me (caspar.kaiser@wbs.ac.uk) in case you get stuck. 
+Do feel free to contact me (caspar.kaiser@wbs.ac.uk) if you get stuck. 
 
-You can install the package from Stata by running:
+You can uninstall the package from Stata by running:
 
 ```stata
 ado uninstall reversals
@@ -30,17 +30,17 @@ ado uninstall reversals
 Tests coefficient robustness to scale transformations using one of two approaches:
 
 - **Python optimization** (default): Uses Python to find minimal-cost transformations via numerical optimization.
-- **Exponential search** (`pythonno` option): Searches over exponential transformations f(y)=exp(c*y).
+- **Exponential search** (`pythonno` option): Searches over exponential transformations of the form f(depvar)=exp(c*depvar).
 
 ### `mrs_reverser` 
 Tests coefficient ratio stability to scale transformations:
 
-- Requires specifying one denominator variable via `denom(varlist)` option
-- Returns original ratio, min/max bounds, and cost to achieve target ratio
+- Requires specifying one denominator variable via the `denom(varlist)` option.
+- Returns original ratio, min/max bounds, and cost to achieve target ratio.
 
 ## Requirements
 
-- **Stata**: Tested on Version 17.0 (requires Python integration)
+- **Stata**: Tested on Version 17.0.
 - **Python** with packages:
   - `numpy`
   - `scipy` 
@@ -52,7 +52,7 @@ Tests coefficient ratio stability to scale transformations:
 sysuse auto, clear
 
 * Run regression
-reg price mpg weight
+reg price mpg weight length turn gear_ratio
 
 * Test coefficient robustness
 coeff_reverser
@@ -64,23 +64,23 @@ mrs_reverser, denom(weight)
 ## Files
 
 ## Core Commands
-- `coeff_reverser.ado`: Main coefficient reversal command
-- `mrs_reverser.ado`: Main coefficient ratio (MRS) analysis command  
+- `coeff_reverser.ado`: Main coefficient reversal command.
+- `mrs_reverser.ado`: Main coefficient ratio (MRS) analysis command.
 
 ## Help Files
 - `coeff_reverser.sthlp`
 - `mrs_reverser.sthlp`
 
 ## Python Optimization Scripts  
-- `sign_reversal_cost_minimizer.py`: Coefficient reversal analysis using SciPy
-- `p_value_cost_minimizer.py`:  p-value analysis using SciPy
-- `mrs_reverser_python.py`: Coefficient ratio analysis using SciPy
+- `sign_reversal_cost_minimizer.py`: Coefficient reversal analysis using SciPy.
+- `p_value_cost_minimizer.py`:  P-value analysis using SciPy.
+- `mrs_reverser_python.py`: Coefficient ratio analysis using SciPy.
 
 ## Citation
 
 If you use this package, please cite:
 
-Kaiser, C. & Lepinteur, A. (2025). "Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data." https://arxiv.org/abs/2507.16440v1
+Kaiser, C. & Lepinteur, A. (2025). "Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data." https://arxiv.org/abs/2507.16440
 
 ## Author
 

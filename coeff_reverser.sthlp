@@ -40,7 +40,7 @@ help for {hi:coeff_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepint
 {p 4 4}{cmd:coeff_reverser} analyzes whether coefficient signs can be reversed under some positive monotonic transformations of the dependent variable.
 This implements the methodology developed in Kaiser & Lepinteur (2025) for testing the robustness of empirical results to departures from the linearity assumption in survey scales.
 
-{p 4 4}See Kaiser & Lepinteur (2025; {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440v1}) for details.{p_end}
+{p 4 4}See Kaiser & Lepinteur (2025; {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440}) for details.{p_end}
 
 {marker description}{...}
 {title:Description}
@@ -157,7 +157,7 @@ Smaller values provide more precise results but require longer computation time.
 
 {p 4 4} Bond, Timothy N. and Kevin Lang. (2019). The sad truth about happiness scales. {it:Journal of Political Economy}, 127:1629–1640.
 
-{p 4 4} Kaiser, Caspar and Anthony Lepinteur. (2025). Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data. Available at {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440v1}.
+{p 4 4} Kaiser, Caspar and Anthony Lepinteur. (2025). Measuring the unmeasurable? Systematic evidence on scale transformations in subjective survey data. Available at {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440}.
 
 {p 4 4} Kaiser, Caspar and Maarten Vendrik. (2023). How much can we learn from happiness data? University of Oxford, Mimeo.
 
