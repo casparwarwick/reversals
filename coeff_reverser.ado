@@ -30,7 +30,11 @@ program coeff_reverser, rclass
 	*	1.1 Set default behavior and option logic
 	*-------------------------------------
 	
-	* Default: use Python for cost minimization	
+	* Default: use Python for cost minimization, but check if it works.
+	if "`pythonno'" == "" {
+		dis "test"
+	}
+	
 	* IF NOT: Default: use fast routine (unless pythonno + pvalue specified)
 	if "`pythonno'" != "" & "`pvalue'" != "" local fast ""
 	else local fast "fast"
