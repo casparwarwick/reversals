@@ -23,16 +23,19 @@ from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint, BFGS
 #2. Define cost function (same as other scripts)
 #=====================================
 
-def cost(l):
-    """
-    Cost function for scale transformations
-    Uses either alpha-parameterized or Theil index approach
-    """
-    cost_function_type = Macro.getLocal('cost_function_type')
-    
-    if cost_function_type == 'theil':
+alpha_value=float(Macro.getLocal('alpha'))
+use_theil = Macro.getLocal('theil') != ''
+
+#-------------------------------------
+#1.1 Define cost function
+#-------------------------------------
+
+if use_theil:
+    # Use normalized Theil index
+    def cost(l):
+
         #-------------------------------------
-        #2.1 Theil index cost function
+        # 1.1.1 Compute differences and normalize
         #-------------------------------------
         K = len(l)
         minl = l[0]
@@ -46,53 +49,63 @@ def cost(l):
         maxdl = maxl - minl
         dl_normalized = [d/maxdl for d in dl]
         
-        # Compute Theil T index
+        #-------------------------------------
+        # 1.1.2 Compute Theil T index
+        #-------------------------------------
         n = len(dl_normalized)
         mean = 1.0 / n  # Since normalized differences sum to 1
         
         theil = 0.0
-        for i in range(n):
-            if dl_normalized[i] > 0:
-                theil += dl_normalized[i] * np.log(dl_normalized[i] / mean)
+        for val in dl_normalized:
+            if val > 0:
+                theil += (val / mean) * np.log(val / mean)
+        theil = theil / n
         
-        # Normalize by maximum possible Theil index
+        # Normalize by maximum possible Theil index ln(n)
         max_theil = np.log(n)
-        cost_value = theil / max_theil
-        return cost_value
+        normalized_theil = theil / max_theil
         
-    else:
-        #-------------------------------------
-        #2.2 Alpha-parameterized cost function (default)
-        #-------------------------------------
-        alpha_value = float(Macro.getLocal('alpha'))
+        return normalized_theil
         
+else:
+    # Use general alpha-based cost function
+    def cost(l):
+        
+        #-------------------------------------
+        #1.1.1 Basics
+        #-------------------------------------
         K = len(l)
         minl = l[0]
         maxl = l[K-1]
         
+        #-------------------------------------
+        #1.1.2 dl
+        #-------------------------------------
         dl = [0]*(K-1)
         for i in range(0,K-1):
             dl[i] = l[i+1] - l[i]
-            
         maxdl = maxl - minl
         N = K - 1
+        maxvar = (1/N - 1/N**2)*maxdl**2
         Edl = maxdl/N
 
+        #-------------------------------------
+        #1.1.3 Compute each component
+        #-------------------------------------
         var_comp = [0]*(N)
         for i in range(0,N):
-            var_comp[i] = (dl[i] - Edl)**alpha_value 
-
+            var_comp[i] = (dl[i] - Edl)**2 
+    
+        #-------------------------------------
+        #1.1.4 Get the variance, normalise, and output
+        #-------------------------------------
         var = (1/N)*np.sum(var_comp)
         
-        if alpha_value == 2:
-            maxvar = (1/N - 1/N**2)*maxdl**alpha_value
-        else:
-            # For general alpha, compute maximum variance
-            # Maximum occurs when all mass is at endpoints
-            maxvar = 0.5 * (maxdl - Edl)**alpha_value + 0.5 * (0 - Edl)**alpha_value
-        
-        cost_value = (var/maxvar)**(1/alpha_value) if alpha_value != 1 else var/maxvar
-        return cost_value
+        # Apply alpha parameter: cost = (var/maxvar)^(1/alpha)
+        exponent = 1/alpha_value
+        cost = (var/maxvar)**exponent
+            
+        return cost
 
 #=====================================
 #3. Import data from Stata
