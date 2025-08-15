@@ -189,14 +189,6 @@ program mrs_reverser, rclass
 	*4.3 Set up locals for Python
 	*-------------------------------------
 	
-	* Cost function parameters
-	if "`theil'" != "" {
-		local cost_function_type "theil"
-	}
-	else {
-		local cost_function_type "alpha"
-	}
-	
 	* Target ratio (if specified)
 	if `target_ratio' != -999 {
 		local has_target_ratio = 1

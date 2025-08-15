@@ -60,7 +60,9 @@ if use_theil:
         max_theil = np.log(n)
         normalized_theil = theil / max_theil
         
-        return normalized_theil
+        exponent = 1/alpha_value
+        cost = (normalized_theil)**exponent
+        return cost
         
 else:
     # Use general alpha-based cost function
