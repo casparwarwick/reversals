@@ -483,11 +483,8 @@ program mrs_reverser, rclass
 	
 	if `has_target_ratio' == 1 {
 		noi dis as text "Target ratio: " as result `target_ratio_value'
-		if "`pythonno'" == "" {
-			noi dis as text "Cost function: " as result "`cost_function_type'"
-			if "`cost_function_type'" == "alpha" {
-				noi dis as text "Alpha parameter: " as result `alpha'
-			}
+		if "`pythonno'" == "" {			
+			noi dis as text "Alpha parameter: " as result `alpha'
 		}
 		else {
 			noi dis as text "Transformation: " as result "exponential search f(y)=exp(c*y)"

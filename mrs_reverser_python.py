@@ -67,7 +67,6 @@ if use_theil:
         
         exponent = 1/alpha_value
         cost = (normalized_theil)**exponent
-
         return cost
         
 else:

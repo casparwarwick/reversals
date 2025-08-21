@@ -14,13 +14,13 @@ help for {hi:coeff_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepint
 {synoptline}
 {syntab:General {help coeff_reverser##opt_general:[+]}}
 {synopt:{opt pythonno}}For use when python is not available. Searches over exponential transformations instead of using the cost-function approach. {p_end}
-{synopt:{opt pvalue}}Display p-value statistics (min/max p-values, and costs for significance changes){p_end}
+{synopt:{opt pvalue}}Display p-value statistics (min/max p-values, and costs for significance changes). Under development. {p_end}
 {synopt:{cmd:revpoint(}{it:real}{cmd:)}}Specifies the target value for sign reversal (default: 0){p_end}
 {synopt:{cmd:critval(}{it:real}{cmd:)}}Specifies the level for statistical significance (default: 0.05){p_end}
 
 {syntab:Cost-function options {help coeff_reverser##opt_search:[+]}}
 {synopt:{cmd:alpha(}{it:real}{cmd:)}}Specifies the alpha parameter for the cost function (default: 2){p_end}
-{synopt:{opt theil}}Use normalized Theil index as cost function (overrides {cmd:alpha} option){p_end}
+{synopt:{opt theil}}Use normalized Theil index as cost function{p_end}
 
 {syntab:Exponential function search options (applies when specifying {cmd:pythonno}) {help coeff_reverser##opt_search:[+]}}
 {synopt:{cmd:start(}{it:real}{cmd:)}}Smallest value of c over which to search (default: -2){p_end}
@@ -31,8 +31,10 @@ help for {hi:coeff_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepint
 {synopt:{cmd:keep(}{it:string}{cmd:)}}Specifies list of variables to keep in displayed results table{p_end}
 
 {synoptline}
-{p 4 4} {cmd:coeff_reverser} requires that a regression has been run and is stored in {cmd:e()}. {p_end}
+{p 4 4} {cmd:coeff_reverser} requires that a linear regression has been run and is stored in {cmd:e()}. {p_end}
 {p 4 4} Unless pythonno is specified, this command requires Python to be available, and SciPy and NumPy to be available in Stata's Python environment. {p_end}
+{p 4 4} Also see {help mrs_reverser}. {p_end}
+
 
 {marker introduction}{...}
 {title:Introduction}

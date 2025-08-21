@@ -19,7 +19,7 @@ help for {hi:mrs_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepinteu
 
 {syntab:Cost-function options {help mrs_reverser##opt_cost:[+]}}
 {synopt:{cmd:alpha(}{it:real}{cmd:)}}Specifies the alpha parameter for the cost function (default: 2){p_end}
-{synopt:{opt theil}}Use normalized Theil index as cost function (overrides {cmd:alpha} option){p_end}
+{synopt:{opt theil}}Use normalized Theil index as cost function{p_end}
 
 {syntab:Exponential function search options (applies when specifying {cmd:pythonno}) {help mrs_reverser##opt_search:[+]}}
 {synopt:{cmd:start(}{it:real}{cmd:)}}Smallest value of c over which to search (default: -2){p_end}
@@ -32,11 +32,12 @@ help for {hi:mrs_reverser} version 0.1 {right: (Caspar Kaiser & Anthony Lepinteu
 {synoptline}
 {p 4 4} {cmd:mrs_reverser} requires that a regression has been run and is stored in {cmd:e()}. {p_end}
 {p 4 4} Unless pythonno is specified, this command requires Python to be available, and SciPy and NumPy to be available in Stata's Python environment. {p_end}
+{p 4 4} Also see {help coeff_reverser}. {p_end}
 
 {marker introduction}{...}
 {title:Introduction}
 
-{p 4 4}{cmd:mrs_reverser} analyzes the stability of coefficient ratios (marginal rates of substitution) to monotonic transformations of ordinal dependent variables.
+{p 4 4}{cmd:mrs_reverser} analyzes the stability of coefficient ratios (marginal rates of substitution) under positive monotonic transformations of the dependent variable.
 This implements the methodology developed in Kaiser & Lepinteur (2025) for testing the robustness of relative effect sizes to departures from the linearity assumption in survey scales.
 
 {p 4 4}See Kaiser & Lepinteur (2025; {browse "https://arxiv.org/abs/2507.16440v1":https://arxiv.org/abs/2507.16440}) for details.{p_end}
@@ -68,7 +69,7 @@ The command will calculate ratios of all other coefficients relative to this den
 
 {p 4 4} {cmd:target_ratio(}{it:real}{cmd:)} specifies a target ratio value for cost calculation.
 When specified, the command calculates the minimum transformation cost needed to achieve this target ratio for each numerator variable.
-For example, {cmd:target_ratio(1)} calculates the cost to make each coefficient equal to the denominator coefficient. Finds smallest required "c" in exponential transformations when {cmd:pythonno} is specified. 
+For example, {cmd:target_ratio(2)} calculates the cost to make each coefficient equal to twice the denominator coefficient. Finds smallest required "c" in exponential transformations when {cmd:pythonno} is specified. 
 
 {marker opt_cost}{...}
 {dlgtab:Cost-function options}
@@ -141,7 +142,7 @@ Smaller values provide more precise results but require longer computation time.
 {title:Technical notes}
 
 {p 4 4} Before performing the analysis, the command checks whether the denominator coefficient can be sign-reversed through transformations.
-If the denominator is reversible, ratio bounds become infinite. A warning is displayed in that case as results may become unreliable in that case.
+If the denominator is reversible, the coefficient ratio becomes unbounded. A warning is then displayed as results may become unreliable in that case.
 
 {title:References}
 
