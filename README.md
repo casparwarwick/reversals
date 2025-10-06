@@ -26,7 +26,7 @@ You can check the availability of Python in Stata by typing:
 ```stata
 python query
 ```
-If Python and/or the NumPy and SciPy libraries are unavailable, both `coeff_reverser` and `mrs_reverser` will revert to `pythonno`.
+If Python and/or the NumPy and SciPy libraries are unavailable, both `coeff_reverser` and `mrs_reverser` will revert to the `pythonno` option. This option is less capable and only checks for reversals within a small class of functions. For further details see the `help` help file.  
 
 If Numpy and/or SciPy are not installed to your Python environment, you should be able to install them by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
 

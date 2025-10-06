@@ -259,7 +259,7 @@ program mrs_reverser, rclass
 			*-------------------------------------
 
 			tempvar trans_depvar_rescaled
-			if (`c' < 0.0000001 & `c' > -0.0000001) gen `trans_depvar_rescaled' = `depvar_rescaled' // I.e. if c==0
+			if (`c' < 0.0000001 & `c' > -0.0000001) gen `trans_depvar_rescaled' = `depvar' // I.e. if c==0
 			else {
 				gen `trans_depvar_rescaled' = ((`minus'exp(`depvar'*`c') - `minus'exp(`min_depvar'*`c')) / (`minus'exp(`max_depvar'*`c') - `minus'exp(`min_depvar'*`c')))*(`scale_max'-`scale_min') + `scale_min'
 			}
@@ -425,10 +425,10 @@ program mrs_reverser, rclass
 	*-------------------------------------
 	
 	if "`pythonno'"=="" {
-		noi dis as text %12s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.cost"
+		noi dis as text %15s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.cost"
 	}
 	else {
-		noi dis as text %12s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.c"
+		noi dis as text %15s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.c"
 	}
 	noi dis as text "{hline 78}"
 	
@@ -475,7 +475,7 @@ program mrs_reverser, rclass
 		else local cost_disp = "."
 		
 		* Display the row
-		noi dis as result %12s "`var'" %15s "`orig_disp'" %15s "`min_disp'" %15s "`max_disp'" %15s "`cost_disp'"
+		noi dis as result %15s "`var'" %15s "`orig_disp'" %15s "`min_disp'" %15s "`max_disp'" %15s "`cost_disp'"
 	}
 	
 	noi dis as text "{hline 78}"
