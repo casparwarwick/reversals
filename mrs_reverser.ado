@@ -11,37 +11,57 @@ program mrs_reverser, rclass
 	*1. Initial setup
 	*=====================================
 
-	syntax, 								/// 
+	syntax,									/// 
 	denom(varlist max=1)					/// Denominator variable (only one variable accepted)
 	[										///
-	pythonno								/// Use routine with exponential transformations instead of Python cost minimization
-	start(real -2) end(real 2) 				/// Specifies the smallest and largest value of c over which should be searched. Only relevant when pythonno is specified. 
-	PRECision(real 0.1) 					/// Specifies the 'density' or 'precision' of the grid of c. Only relevant when pythonno is specified. 
-	target_ratio(real -999)					/// Target ratio for cost calculation
-	alpha(real 2)							/// Alpha parameter for cost function (default: 2)
-	theil									/// Use normalized Theil index as cost function (overrides alpha option)
+	python									/// Use Python numerical cost minimization instead of the analytical active-set search (default)
+	target_ratio(real -999)					/// Target ratio for cost calculation. Only relevant when python is not specified, or in combination with alpha/theil.
+	alpha(real 2)							/// Alpha parameter for cost function (default: 2). Only relevant when python is specified.
+	theil									/// Use normalized Theil index as cost function (overrides alpha option). Only relevant when python is specified.
 	keep(string) 							/// Specifies list of variables to be kept in the displayed results table
+	MAX_attempts(integer 50000)				/// Cap on number of cra_solve_face calls in analytical search. Ignored when python is specified.
 	]		
 
 	qui {
 	
 	*-------------------------------------
-	*	1.1 Set default behavior and option logic
+	*	1.1 Option logic and warnings
 	*-------------------------------------
 	
-	* Default: use Python for cost minimization, but check if it works. If not, revert to pythonno. 
-	if "`pythonno'" == "" {
+	* Default is the analytical search. The `python' option switches to numerical
+	* optimisation. Warn about options that are ignored under the chosen routine.
+	
+	if "`python'" == "" {
+		* Analytical routine in use - python-only options are ignored.
+		local _ignored_py ""
+		if `alpha'   != 2  local _ignored_py "`_ignored_py' alpha()"
+		if "`theil'" != "" local _ignored_py "`_ignored_py' theil"
+		if "`_ignored_py'" != "" {
+			noi dis as err "Note: the following option(s) are ignored when the python option is not specified:`_ignored_py'."
+		}
+	}
+	else {
+		* Python routine in use - analytical-only options are ignored.
+		if `max_attempts' != 50000 {
+			noi dis as err "Note: the max_attempts() option is ignored when the python option is specified."
+		}
+	}
+	
+	* If python is requested, check that numpy and scipy are available.
+	* If not, fall back to the analytical routine.
+	if "`python'" != "" {
 		capture python which numpy
 		if _rc != 0 {
-			noi dis "Numpy not available. Reverting to pythonno option."
-			local pythonno "pythonno"
+			noi dis as err "Numpy not available. Falling back to the analytical search."
+			local python ""
 		}
+	}
+	if "`python'" != "" {
 		capture python which scipy
 		if _rc != 0 {
-			noi dis "SciPy not available. Reverting to pythonno option."
-			local pythonno "pythonno"
+			noi dis as err "SciPy not available. Falling back to the analytical search."
+			local python ""
 		}
-		
 	}
 	
 	* Clean up any leftover matrices from previous runs
@@ -83,7 +103,8 @@ program mrs_reverser, rclass
 	local max_depvar = r(max)
 	
 	local scale_min = `min_depvar'
-	local scale_max = `max_depvar'		
+	local scale_max = `max_depvar'
+	local scale_range = `scale_max' - `scale_min'
 			
 	* Get the labels into a matrix (needed for the python routine)
 	levelsof `depvar', matrow(_labels_depvar)
@@ -149,11 +170,11 @@ program mrs_reverser, rclass
 	}
 		
 	*=====================================
-	*4. Prepare matrices for Python analysis
+	*3. Prepare coefficient vectors for ratio analysis
 	*=====================================
 
 	*-------------------------------------
-	*4.1 Get numerator variables (all except denominator and constant)
+	*3.1 Get numerator variables (all except denominator and constant)
 	*-------------------------------------
 			
 	local explanatory_vars "`:colnames `orig_b''"
@@ -165,10 +186,10 @@ program mrs_reverser, rclass
 	local numerator_vars = subinstr("`numerator_vars'", "  ", " ",.)
 	
 	*-------------------------------------
-	*4.2 Extract coefficients for Python
+	*3.2 Extract coefficients
 	*-------------------------------------
 	
-	* Extract denominator coefficients
+	* Extract denominator coefficients (column vector of bd's for the denominator)
 	matselrc `tmp_w_mat' _denominator_coeffs, c(`denom')
 	
 	* Extract numerator coefficients for each variable
@@ -186,7 +207,7 @@ program mrs_reverser, rclass
 	}
 	
 	*-------------------------------------
-	*4.3 Set up locals for Python
+	*3.3 Set up locals
 	*-------------------------------------
 	
 	* Target ratio (if specified)
@@ -199,16 +220,19 @@ program mrs_reverser, rclass
 		local target_ratio_value = 0
 	}
 	
-	* Pass reversible flag to Python
+	* Pass reversible flag to Python (used by Python script)
 	local denom_reversible_flag = `denom_reversible'
 	
+	* Get original (linear) coefficients for the denominator and each numerator
+	local orig_denom = `orig_b'[1, colnumb(`orig_b', "`denom'")]
+	
 	*=====================================
-	*5. Run analysis (Python or exponential search)
+	*4. Run analysis
 	*=====================================
 	
-	if "`pythonno'" == "" {
+	if "`python'" != "" {
 		*-------------------------------------
-		*5.1 Run Python optimization
+		*4.1 Run Python optimization
 		*-------------------------------------
 		
 		python script "`c(sysdir_plus)'py/mrs_reverser_python.py"
@@ -216,202 +240,98 @@ program mrs_reverser, rclass
 	}
 	else {
 		*-------------------------------------
-		*5.2 Run exponential search routine
+		*4.2 Run analytical active-set search
 		*-------------------------------------
 		
-		* Store original coefficient bounds for later comparison
-		local explanatory_vars "`:colnames `orig_b''"
-		local explanatory_vars = subinstr("`explanatory_vars'", "_cons", "",1)
-		local numerator_vars = subinstr("`explanatory_vars'", "`denom'", "",1)
-		local numerator_vars = trim("`numerator_vars'")
-		local numerator_vars = subinstr("`numerator_vars'", "  ", " ",.)
+		* For each numerator variable, compute:
+		*   - orig_ratio_X      : original linear ratio (from orig_b)
+		*   - min_ratio_X, max_ratio_X : bounds on the ratio across positive
+		*                                 monotonic transformations
+		*   - target_cost_X     : minimum SD-based cost to attain target_ratio_value,
+		*                          conditional on it being feasible
 		
-		* Count numerator variables
-		local num_vars : word count `numerator_vars'
+		local n_gaps = `n_levels_depvar' - 1
 		
-		* Initialize result matrices
-		tempname b_result_all
-		tempname c_values
+		* Vector of dichotomised coefficients for the denominator
+		tempname bd_denom_col
+		matrix `bd_denom_col' = _denominator_coeffs
 		
-		*Tell the user how many regressions need to be run
-		local N_c = ((`end' - `start')/`precision')+1
-		noisily dis ""
-		noisily dis "Total number of c-values to check: `N_c'. Progress:"
-
-		*A counter to keep track of things
-		local iter = 1
-		
-		*-------------------------------------
-		*5.2.1 Loop through c values
-		*-------------------------------------
-		
-		forvalues c=`start'(`precision')`end'{
-			
-			*-------------------------------------
-			*5.2.2 Get minus sign before the exp() function for negative c
-			*-------------------------------------
-
-			if `c' < 0 	local minus "-"
-			if `c' > 0	local minus ""
-			
-			*-------------------------------------
-			*5.2.3 Create exponential transformation
-			*-------------------------------------
-
-			tempvar trans_depvar_rescaled
-			if (`c' < 0.0000001 & `c' > -0.0000001) gen `trans_depvar_rescaled' = `depvar' // I.e. if c==0
-			else {
-				gen `trans_depvar_rescaled' = ((`minus'exp(`depvar'*`c') - `minus'exp(`min_depvar'*`c')) / (`minus'exp(`max_depvar'*`c') - `minus'exp(`min_depvar'*`c')))*(`scale_max'-`scale_min') + `scale_min'
-			}
-
-			*-------------------------------------
-			*5.2.4 Get a matrix to record differences in labels
-			*-------------------------------------
-
-			tempname dlabels
-			matrix `dlabels' = J(`nrows_d_result',`nrows_d_result',0)
-			local n = 0
-			levelsof `trans_depvar_rescaled', local(levels_transdepvar_rescales)
-			foreach l of local levels_transdepvar_rescales {
-				if `n'==0 {
-					local k = `l' 	// k here denotes the previous label. Do nothing in the first iteration and just update k for the next iteration.
-				}
-				else { 				// produces a diagonal matrix with the right dimensions to multiply.
-					cap mat `dlabels'[`n',`n'] = `k'-`l'
-					local k = `l' 	// Store l in k for the next iteration. 
-				}
-				local ++n
-			}
-			
-			*-------------------------------------
-			*5.2.5 Use the results from regressions of hd to arrive at the transformed coefficients
-			*-------------------------------------
-
-			*Take the dmat result and multiply each element by the matrix recording differences of labels
-			tempname tmp_coeff_result
-			matrix `tmp_coeff_result' = `dlabels' * `tmp_w_mat'
-			
-			*Take the column-wise sum:
-			matrix `tmp_coeff_result' = J(1,rowsof(`tmp_coeff_result'),1)*`tmp_coeff_result' 
-			
-			*Store result in the b_result matrix
-			if `c'==`start' {
-				matrix `b_result_all' = (`tmp_coeff_result')
-				matrix `c_values' = (`c')
-			}
-			else {
-				matrix `b_result_all' = (`b_result_all' \ `tmp_coeff_result')
-				matrix `c_values' = (`c_values' \ `c')
-			}
-			
-			*Display progress
-			noisily _dots `iter' 0
-			local ++iter
-			drop `trans_depvar_rescaled'
-		}
-		
-		*-------------------------------------
-		*5.2.6 Calculate ratios and find bounds for each numerator variable
-		*-------------------------------------
-		
-		* Extract denominator coefficients from b_result_all
-		matselrc `b_result_all' exp_denom_coeffs, c(`denom')
-		
-		* Calculate ratios for each numerator variable
 		local var_counter = 0
 		foreach var of local numerator_vars {
 			local ++var_counter
 			
-			* Extract numerator coefficients for this variable
-			matselrc `b_result_all' exp_num_coeffs, c(`var')
-			
-			* Calculate ratios
-			tempname ratio_matrix
-			mata : st_matrix("`ratio_matrix'", st_matrix("exp_num_coeffs") :/ st_matrix("exp_denom_coeffs"))
-			
-			* Find min and max ratios
-			mata : st_numscalar("min_ratio_sc", min(st_matrix("`ratio_matrix'")))
-			mata : st_numscalar("max_ratio_sc", max(st_matrix("`ratio_matrix'")))
-			
-			* Get original ratio (find c closest to 0 for linear case)
-			local closest_to_zero_idx = 1
-			local min_abs_c = abs(`c_values'[1,1])
-			forvalues i = 2/`=rowsof(`c_values')' {
-				local current_abs_c = abs(`c_values'[`i',1])
-				if `current_abs_c' < `min_abs_c' {
-					local min_abs_c = `current_abs_c'
-					local closest_to_zero_idx = `i'
-				}
+			* Original linear ratio
+			local orig_num = `orig_b'[1, colnumb(`orig_b', "`var'")]
+			if abs(`orig_denom') > 1e-15 {
+				local orig_ratio_`var_counter' = `orig_num' / `orig_denom'
 			}
-			local orig_ratio_val = `ratio_matrix'[`closest_to_zero_idx',1]
+			else {
+				local orig_ratio_`var_counter' = .
+			}
 			
-			* Store results in locals for display
-			local orig_ratio_`var_counter' = `orig_ratio_val'
-			local min_ratio_`var_counter' = scalar(min_ratio_sc)
-			local max_ratio_`var_counter' = scalar(max_ratio_sc)
+			* Pull the column of dichotomised numerator coefficients
+			tempname bd_num_col
+			matrix `bd_num_col' = _numerator_coeffs[1...,`var_counter']
 			
-			* Calculate target cost if specified
+			* Compute min and max ratios across k = 1..K-1
+			mata: st_local("min_ratio_`var_counter'", strofreal(min(st_matrix("`bd_num_col'") :/ st_matrix("`bd_denom_col'"))))
+			mata: st_local("max_ratio_`var_counter'", strofreal(max(st_matrix("`bd_num_col'") :/ st_matrix("`bd_denom_col'"))))
+			
+			* If the denominator is reversible (sign-flips across k), the implied
+			* ratio is unbounded - report as +/- infinity.
+			if `denom_reversible' == 1 {
+				local min_ratio_`var_counter' = "-inf"
+				local max_ratio_`var_counter' = "inf"
+			}
+			
+			* Minimum cost to attain target_ratio_value
 			if `has_target_ratio' == 1 {
-				* Find c value that gives target ratio (if any)
-				tempname target_found
-				local target_found = 0
-				local target_c = .
 				
-				forvalues i = 1/`=rowsof(`ratio_matrix')' {
-					local current_ratio = `ratio_matrix'[`i',1]
-					local current_c = `c_values'[`i',1]
-					
-					* Check if this ratio is close to target
-					if abs(`current_ratio' - `target_ratio_value') < 0.001 {
-						local target_found = 1
-						local target_c = abs(`current_c')
-						continue, break
-					}
+				* The cost of attaining ratio rho is the cost of "sign-reversing"
+				* the linear combination c_k = bd_num_k - rho * bd_denom_k to 0.
+				* So we form c_k and feed it to cra_search.
+				tempname c_vec
+				mata: st_matrix("`c_vec'", st_matrix("`bd_num_col'") :- `target_ratio_value' :* st_matrix("`bd_denom_col'"))
+				
+				* Quick feasibility check: the target ratio must lie within the
+				* (numeric) bounds on the achievable ratio.
+				local feasible = 1
+				if "`min_ratio_`var_counter''" != "-inf" {
+					if `target_ratio_value' < `min_ratio_`var_counter'' local feasible = 0
+				}
+				if "`max_ratio_`var_counter''" != "inf" {
+					if `target_ratio_value' > `max_ratio_`var_counter'' local feasible = 0
 				}
 				
-				if `target_found' == 1 {
-					local target_cost_`var_counter' = `target_c'
+				if `feasible' == 1 {
+					tempname result_row
+					mata: st_matrix("`result_row'", cra_search(st_matrix("`c_vec'"), `n_gaps', `max_attempts'))
+					
+					* Unpack the cost (first element of the result row)
+					local target_cost_`var_counter' = `result_row'[1, 1]
+					local n_attempts_`var_counter'  = `result_row'[1, `n_gaps' + 3]
+					local hit_limit_`var_counter'   = `result_row'[1, `n_gaps' + 4]
 				}
 				else {
 					local target_cost_`var_counter' = .
+					local n_attempts_`var_counter'  = .
+					local hit_limit_`var_counter'   = 0
 				}
 			}
 			else {
 				local target_cost_`var_counter' = .
+				local n_attempts_`var_counter'  = .
+				local hit_limit_`var_counter'   = 0
 			}
 		}
-		
-		* Set number of variables for display
-		local num_variables = `num_vars'
 	}
-	
-	*-------------------------------------
-	*5.3 Get results (from Python or exponential search)
-	*-------------------------------------
-	
-	if "`pythonno'" == "" {
-		* Get basic ratios from Python
-		local orig_ratio_1 "`orig_ratio_1'"
-		local min_ratio_1 "`min_ratio_1'"
-		local max_ratio_1 "`max_ratio_1'"
-		
-		* Additional variables if they exist
-		if "`orig_ratio_2'" != "" {
-			local orig_ratio_2 "`orig_ratio_2'"
-			local min_ratio_2 "`min_ratio_2'"  
-			local max_ratio_2 "`max_ratio_2'"
-		}
-		
-		local num_variables "`num_variables'"
-	}
-	* For exponential search, results are already stored in locals from section 5.2.6
 	
 	*=====================================
-	*6. Display results
+	*5. Display results
 	*=====================================
 	
 	*-------------------------------------
-	*6.1 Display header
+	*5.1 Display header
 	*-------------------------------------
 	
 	noi dis ""
@@ -421,21 +341,43 @@ program mrs_reverser, rclass
 	noi dis ""
 	
 	*-------------------------------------
-	*6.2 Display results table
+	*5.2 Determine which variables to display (respect keep() option)
 	*-------------------------------------
 	
-	if "`pythonno'"=="" {
-		noi dis as text %15s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.cost"
+	if "`keep'" != "" {
+		local display_vars ""
+		foreach v of local keep {
+			* Only include vars that are actually in the numerator list
+			local in_list : list v in numerator_vars
+			if `in_list' local display_vars "`display_vars' `v'"
+		}
+		local display_vars = trim("`display_vars'")
+		if "`display_vars'" == "" {
+			noi dis as err "Note: none of the variables in keep() match numerator variables. Displaying all numerator variables."
+			local display_vars "`numerator_vars'"
+		}
 	}
 	else {
-		noi dis as text %15s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.c"
+		local display_vars "`numerator_vars'"
 	}
+	
+	*-------------------------------------
+	*5.3 Display results table
+	*-------------------------------------
+	
+	noi dis as text %15s "Variable" %15s "Orig.ratio" %15s "Min.ratio" %15s "Max.ratio" %15s "Min.cost"
 	noi dis as text "{hline 78}"
 	
-	* Loop through numerator variables and display results
+	* Loop through numerator variables and display results. We always loop over the
+	* full list of numerator vars internally to keep var_counter aligned with the
+	* matrices, and only print rows for vars in display_vars.
 	local var_counter = 0
 	foreach var of local numerator_vars {
 		local ++var_counter
+		
+		* Skip if not in display list
+		local in_display : list var in display_vars
+		if `in_display' == 0 continue
 		
 		* Get the ratios for this variable
 		local orig_val = "`orig_ratio_`var_counter''"
@@ -444,7 +386,7 @@ program mrs_reverser, rclass
 		local cost_val = "`target_cost_`var_counter''"
 		
 		* Format values
-		if "`orig_val'" != "" {
+		if "`orig_val'" != "" & "`orig_val'" != "." {
 			local orig_disp : di %9.3f `orig_val'
 		}
 		else local orig_disp = "."
@@ -481,42 +423,47 @@ program mrs_reverser, rclass
 	noi dis as text "{hline 78}"
 	noi dis ""
 	
+	*-------------------------------------
+	*5.4 Display footer info
+	*-------------------------------------
+	
 	if `has_target_ratio' == 1 {
 		noi dis as text "Target ratio: " as result `target_ratio_value'
-		if "`pythonno'" == "" {			
-			noi dis as text "Alpha parameter: " as result `alpha'
-		}
-		else {
-			noi dis as text "Transformation: " as result "exponential search f(y)=exp(c*y)"
-			noi dis as text "Search range: " as result "c ∈ [`start', `end'], precision = `precision'"
-			noi dis as text "Note: " as result "Missing values may indicate target ratio falls outside search range"
-		}
 		noi dis ""
 	}
 	else {
 		noi dis as text "Target ratio: " as result "no target ratio specified"
-		if "`pythonno'" == "" {
-			noi dis as text "Cost function: " as result "not applicable"
-		}
-		else {
-			noi dis as text "Transformation: " as result "exponential search f(y)=exp(c*y)"
-			noi dis as text "Search range: " as result "c ∈ [`start', `end'], precision = `precision'"
-		}
-		noi dis ""		
-	}
-	
-	* Display warning if denominator is reversible (at the end)
-	if `denom_reversible' == 1 {
-		noi dis as text "Warning: The specified denominator is reversible. Results may not be accurate."
 		noi dis ""
 	}
 	
+	* Display warning if denominator is reversible
+	if `denom_reversible' == 1 {
+		noi dis as text "Warning: The specified denominator is reversible. Ratios are unbounded."
+		noi dis ""
+	}
+	
+	* If analytical search hit the cap anywhere, warn
+	if "`python'" == "" & `has_target_ratio' == 1 {
+		local any_hit = 0
+		local var_counter = 0
+		foreach var of local numerator_vars {
+			local ++var_counter
+			if "`hit_limit_`var_counter''" == "1" local any_hit = 1
+		}
+		if `any_hit' == 1 {
+			noi dis as err "WARNING: For at least one variable, the analytical search reached the cap of `max_attempts' calls."
+			noi dis as err "         Reported minimum costs may not be the global optimum for those variables."
+			noi dis as err "         See r(hit_limit) for which variables are affected. You may want to increase max_attempts()."
+			noi dis ""
+		}
+	}
+	
 	*=====================================
-	*7. Store results in r()
+	*6. Store results in r()
 	*=====================================
 	
 	*-------------------------------------
-	*7.1 Create result matrices
+	*6.1 Create result matrices
 	*-------------------------------------
 	
 	* Count numerator variables for matrix dimensions
@@ -524,7 +471,7 @@ program mrs_reverser, rclass
 	
 	* Create matrices for storing results
 	tempname result_matrix ratio_matrix minratio_matrix maxratio_matrix
-	tempname cost_matrix minc_matrix
+	tempname cost_matrix n_attempts_matrix hit_limit_matrix
 	
 	* Initialize matrices
 	matrix `ratio_matrix' = J(`var_count', 1, .)
@@ -532,20 +479,21 @@ program mrs_reverser, rclass
 	matrix `maxratio_matrix' = J(`var_count', 1, .)
 	
 	if `has_target_ratio' == 1 {
-		if "`pythonno'" == "" {
-			matrix `cost_matrix' = J(`var_count', 1, .)
-		}
-		else {
-			matrix `minc_matrix' = J(`var_count', 1, .)
-		}
+		matrix `cost_matrix' = J(`var_count', 1, .)
+	}
+	
+	* Analytical-search-only diagnostics
+	if "`python'" == "" {
+		matrix `n_attempts_matrix' = J(`var_count', 1, .)
+		matrix `hit_limit_matrix' = J(`var_count', 1, .)
 	}
 	
 	* Create result display matrix
 	if `has_target_ratio' == 1 {
-		matrix `result_matrix' = J(`var_count', 5, .)
+		matrix `result_matrix' = J(`var_count', 4, .)
 	}
 	else {
-		matrix `result_matrix' = J(`var_count', 4, .)
+		matrix `result_matrix' = J(`var_count', 3, .)
 	}
 	
 	* Fill matrices with computed results
@@ -554,53 +502,45 @@ program mrs_reverser, rclass
 		local ++var_counter
 		
 		* Store basic ratios
-		matrix `ratio_matrix'[`var_counter', 1] = `orig_ratio_`var_counter''
+		if "`orig_ratio_`var_counter''" != "" & "`orig_ratio_`var_counter''" != "." {
+			matrix `ratio_matrix'[`var_counter', 1] = `orig_ratio_`var_counter''
+			matrix `result_matrix'[`var_counter', 1] = `orig_ratio_`var_counter''
+		}
 		
 		* Handle infinite bounds
 		if "`min_ratio_`var_counter''" == "-inf" {
 			matrix `minratio_matrix'[`var_counter', 1] = -999999999
-		}
-		else {
-			matrix `minratio_matrix'[`var_counter', 1] = `min_ratio_`var_counter''
-		}
-		
-		if "`max_ratio_`var_counter''" == "inf" {
-			matrix `maxratio_matrix'[`var_counter', 1] = 999999999
-		}
-		else {
-			matrix `maxratio_matrix'[`var_counter', 1] = `max_ratio_`var_counter''
-		}
-		
-		* Fill result display matrix
-		matrix `result_matrix'[`var_counter', 1] = `orig_ratio_`var_counter''
-		
-		if "`min_ratio_`var_counter''" == "-inf" {
 			matrix `result_matrix'[`var_counter', 2] = -999999999
 		}
-		else {
+		else if "`min_ratio_`var_counter''" != "" {
+			matrix `minratio_matrix'[`var_counter', 1] = `min_ratio_`var_counter''
 			matrix `result_matrix'[`var_counter', 2] = `min_ratio_`var_counter''
 		}
 		
 		if "`max_ratio_`var_counter''" == "inf" {
+			matrix `maxratio_matrix'[`var_counter', 1] = 999999999
 			matrix `result_matrix'[`var_counter', 3] = 999999999
 		}
-		else {
+		else if "`max_ratio_`var_counter''" != "" {
+			matrix `maxratio_matrix'[`var_counter', 1] = `max_ratio_`var_counter''
 			matrix `result_matrix'[`var_counter', 3] = `max_ratio_`var_counter''
 		}
 		
 		* Store target costs if applicable
 		if `has_target_ratio' == 1 {
-			if "`pythonno'" == "" {
-				if `target_cost_`var_counter'' != . {
-					matrix `cost_matrix'[`var_counter', 1] = `target_cost_`var_counter''
-					matrix `result_matrix'[`var_counter', 4] = `target_cost_`var_counter''
-				}
+			if "`target_cost_`var_counter''" != "" & `target_cost_`var_counter'' != . {
+				matrix `cost_matrix'[`var_counter', 1] = `target_cost_`var_counter''
+				matrix `result_matrix'[`var_counter', 4] = `target_cost_`var_counter''
 			}
-			else {
-				if `target_cost_`var_counter'' != . {
-					matrix `minc_matrix'[`var_counter', 1] = `target_cost_`var_counter''
-					matrix `result_matrix'[`var_counter', 4] = `target_cost_`var_counter''
-				}
+		}
+		
+		* Analytical-search-only diagnostics
+		if "`python'" == "" {
+			if "`n_attempts_`var_counter''" != "" & "`n_attempts_`var_counter''" != "." {
+				matrix `n_attempts_matrix'[`var_counter', 1] = `n_attempts_`var_counter''
+			}
+			if "`hit_limit_`var_counter''" != "" {
+				matrix `hit_limit_matrix'[`var_counter', 1] = `hit_limit_`var_counter''
 			}
 		}
 	}
@@ -616,23 +556,23 @@ program mrs_reverser, rclass
 	matrix colnames `maxratio_matrix' = "max_ratio"
 	
 	if `has_target_ratio' == 1 {
-		if "`pythonno'" == "" {
-			matrix rownames `cost_matrix' = `numerator_vars'
-			matrix colnames `cost_matrix' = "cost"
-			matrix colnames `result_matrix' = "orig_ratio" "min_ratio" "max_ratio" "cost"
-		}
-		else {
-			matrix rownames `minc_matrix' = `numerator_vars'
-			matrix colnames `minc_matrix' = "min_c"
-			matrix colnames `result_matrix' = "orig_ratio" "min_ratio" "max_ratio" "min_c"
-		}
+		matrix rownames `cost_matrix' = `numerator_vars'
+		matrix colnames `cost_matrix' = "cost"
+		matrix colnames `result_matrix' = "orig_ratio" "min_ratio" "max_ratio" "cost"
 	}
 	else {
 		matrix colnames `result_matrix' = "orig_ratio" "min_ratio" "max_ratio"
 	}
 	
+	if "`python'" == "" {
+		matrix rownames `n_attempts_matrix' = `numerator_vars'
+		matrix rownames `hit_limit_matrix' = `numerator_vars'
+		matrix colnames `n_attempts_matrix' = "n_attempts"
+		matrix colnames `hit_limit_matrix' = "hit_limit"
+	}
+	
 	*-------------------------------------
-	*7.2 Return results in r()
+	*6.2 Return results in r()
 	*-------------------------------------
 	
 	* Main result matrices
@@ -643,20 +583,21 @@ program mrs_reverser, rclass
 	
 	* Cost matrices (if target ratio specified)
 	if `has_target_ratio' == 1 {
-		if "`pythonno'" == "" {
-			return matrix cost = `cost_matrix'
-		}
-		else {
-			return matrix minc = `minc_matrix'
-		}
+		return matrix cost = `cost_matrix'
+	}
+	
+	* Analytical-search-only diagnostics
+	if "`python'" == "" {
+		return matrix n_attempts = `n_attempts_matrix'
+		return matrix hit_limit = `hit_limit_matrix'
 	}
 	
 	*=====================================
-	*8. Clean up and restore
+	*7. Clean up and restore
 	*=====================================
 	
 	*-------------------------------------
-	*8.1 Clean up matrices
+	*7.1 Clean up matrices
 	*-------------------------------------
 	
 	cap mat drop _labels_depvar
@@ -664,11 +605,201 @@ program mrs_reverser, rclass
 	cap mat drop _numerator_coeffs
 
 	*-------------------------------------
-	*8.2 Restore the original model
+	*7.2 Restore the original model
 	*-------------------------------------
 	
 	qui estimates restore `prevmodel'
 	
 	}	// ends the qui condition
 	
+end
+
+
+*========================================
+* Mata functions for the analytical search.
+* These are identical to the routines used by coeff_reverser.
+* Including them here too so that mrs_reverser can be used standalone.
+*========================================
+
+clear mata
+mata:
+
+real rowvector cra_solve_face(real colvector b, real scalar A_bits, real scalar n_gaps)
+{
+    // Closed-form solution of the reduced problem on a single face.
+    // Returns (C, Delta_1, ..., Delta_n_gaps) as a row vector,
+    // or a row of missing values if the reduced problem is degenerate
+    // (M < 2 or zero variance of free dichotomised coefficients).
+
+    real colvector active, free, Delta
+    real scalar k, M, mu, V, C
+
+    active = J(n_gaps, 1, 0)
+    for (k = 1; k <= n_gaps; k++) {
+        active[k] = mod(floor(A_bits / 2^(k - 1)), 2)
+    }
+    free = 1 :- active
+    M    = sum(free)
+    if (M < 2) return(J(1, n_gaps + 1, .))
+
+    mu = sum(b :* free) / M
+    V  = sum(((b :- mu):^2) :* free) / M
+    if (V < 1e-15) return(J(1, n_gaps + 1, .))
+
+    Delta = (1/M :- mu * (b :- mu) / (M * V)) :* free
+    C     = sqrt(n_gaps / (n_gaps - 1) * sum((Delta :- 1/n_gaps):^2))
+    return((C, Delta'))
+}
+
+real rowvector cra_naive_feasible(real colvector b, real scalar n_gaps)
+{
+    // Closed-form two-block warm start.
+
+    real scalar S_pos, S_neg, n_pos, n_neg, n_zero, lambda, T, C, k
+    real colvector Delta
+
+    S_pos  = 0
+    S_neg  = 0
+    n_pos  = 0
+    n_neg  = 0
+    n_zero = 0
+    for (k = 1; k <= n_gaps; k++) {
+        if (b[k] > 0) {
+            S_pos = S_pos + b[k]
+            n_pos = n_pos + 1
+        }
+        else if (b[k] < 0) {
+            S_neg = S_neg + b[k]
+            n_neg = n_neg + 1
+        }
+        else {
+            n_zero = n_zero + 1
+        }
+    }
+
+    if (n_pos == 0 | n_neg == 0) return(J(1, n_gaps + 1, .))
+
+    lambda = -S_pos / S_neg
+    T      = lambda * n_neg + n_pos + n_zero
+
+    Delta = J(n_gaps, 1, .)
+    for (k = 1; k <= n_gaps; k++) {
+        if (b[k] < 0) Delta[k] = lambda / T
+        else          Delta[k] = 1 / T
+    }
+
+    C = abs(lambda - 1) / T * sqrt(n_neg * (n_pos + n_zero) / (n_gaps - 1))
+
+    return((C, Delta'))
+}
+
+real rowvector cra_search(real colvector b, real scalar n_gaps, real scalar max_attempts)
+{
+    // Active-set search with cost-based pruning and a closed-form warm start.
+    //
+    // Returns 1 x (n_gaps + 4):
+    //   (best_C, best_Delta_1, ..., best_Delta_n_gaps, best_A_bits,
+    //    n_attempts, hit_limit).
+
+    real scalar best_C, best_A_bits, max_level, level
+    real scalar i, k, A, parent_A, child_A
+    real scalar attempts, hit_limit
+    real colvector best_Delta, Delta
+    real colvector current_frontier, current_costs
+    real colvector new_frontier, new_costs
+    real colvector candidates, keep
+    real rowvector sol, naive_sol
+
+    max_level   = n_gaps - 1
+    best_C      = .
+    best_Delta  = J(n_gaps, 1, .)
+    best_A_bits = -1
+    attempts    = 0
+    hit_limit   = 0
+
+    // Level 0
+    sol      = cra_solve_face(b, 0, n_gaps)
+    attempts = attempts + 1
+    if (sol[1, 1] == .) {
+        return((., J(1, n_gaps, .), -1, attempts, hit_limit))
+    }
+
+    Delta = sol[1, 2..(n_gaps + 1)]'
+    if (min(Delta) >= -1e-10) {
+        return((sol[1, 1], Delta', 0, attempts, hit_limit))
+    }
+
+    // Closed-form naive warm start (free)
+    naive_sol = cra_naive_feasible(b, n_gaps)
+    if (naive_sol[1, 1] == .) {
+        return((., J(1, n_gaps, .), -1, attempts, hit_limit))
+    }
+    best_C      = naive_sol[1, 1]
+    best_Delta  = naive_sol[1, 2..(n_gaps + 1)]'
+    best_A_bits = -2
+
+    if (attempts >= max_attempts) {
+        hit_limit = 1
+        return((best_C, best_Delta', best_A_bits, attempts, hit_limit))
+    }
+
+    // BFS over faces
+    current_frontier = J(1, 1, 0)
+    current_costs    = J(1, 1, sol[1, 1])
+
+    for (level = 1; level <= max_level; level++) {
+
+        keep             = current_costs :< best_C
+        current_frontier = select(current_frontier, keep)
+        current_costs    = select(current_costs,    keep)
+        if (rows(current_frontier) == 0) break
+
+        candidates = J(0, 1, .)
+        for (i = 1; i <= rows(current_frontier); i++) {
+            parent_A = current_frontier[i]
+            for (k = 1; k <= n_gaps; k++) {
+                if (mod(floor(parent_A / 2^(k - 1)), 2) == 0) {
+                    child_A    = parent_A + 2^(k - 1)
+                    candidates = candidates \ child_A
+                }
+            }
+        }
+        if (rows(candidates) == 0) break
+        candidates = uniqrows(candidates)
+
+        new_frontier = J(0, 1, .)
+        new_costs    = J(0, 1, .)
+        for (i = 1; i <= rows(candidates); i++) {
+
+            if (attempts >= max_attempts) {
+                hit_limit = 1
+                break
+            }
+
+            A        = candidates[i]
+            sol      = cra_solve_face(b, A, n_gaps)
+            attempts = attempts + 1
+            if (sol[1, 1] == .) continue
+            if (sol[1, 1] >= best_C) continue
+
+            Delta = sol[1, 2..(n_gaps + 1)]'
+            if (min(Delta) >= -1e-10) {
+                best_C      = sol[1, 1]
+                best_Delta  = Delta
+                best_A_bits = A
+            }
+            else {
+                new_frontier = new_frontier \ A
+                new_costs    = new_costs    \ sol[1, 1]
+            }
+        }
+
+        if (hit_limit) break
+
+        current_frontier = new_frontier
+        current_costs    = new_costs
+    }
+
+    return((best_C, best_Delta', best_A_bits, attempts, hit_limit))
+}
 end

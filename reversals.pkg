@@ -1,10 +1,10 @@
-v 0.1
+v 0.2
 d 'REVERSALS': Robustness Analyses of Scale Transformations in Linear Regressions
 d 
 d This package implements the methodology from Kaiser & Lepinteur (2025; https://arxiv.org/abs/2507.16440) 
 d for analyzing the robustness of coefficients to nonlinear transformations of the dependent variable.
 d 
-d Distribution-Date:   20250807
+d Distribution-Date:   20260518
 d License: MIT
 d 
 d Author: Caspar Kaiser

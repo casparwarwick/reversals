@@ -12,62 +12,43 @@ program coeff_reverser, rclass
 	*=====================================
 
 	syntax, [ 								/// 
-	python									/// Use Python numerical cost minimization instead of the analytical active-set search (default)
-	pvalue									/// display p-value statistics (min/max p-values, and minimum costs). Only relevant when python is specified.
-	critval(real 0.05) 						/// Specifies the alpha level where we speak of statistical significance. Only relevant when python is specified. 
-	alpha(real 2)							/// Specifies the alpha parameter for the cost function (default: 2). Only relevant when python is specified.
-	theil									/// Use normalized Theil index as cost function (overrides alpha option). Only relevant when python is specified. 
-	revpoint(real 0)						/// Specifies the target value for sign reversal (default: 0). Only relevant when python is specified. 
+	pythonno								/// Use routine with exponential transformations instead of the Python cost minimization
+	start(real -2) end(real 2) 				/// Specifies the smallest and largest value of c over which should be searched. Only relevant when pythonno is specified. 
+	PRECision(real 0.1) 					/// Specifies the 'density' or 'precision' of the grid of c. For example precision(0.1) says that we evaluate values of c in steps of 0.1. Only relevant when pythonno is specified. 
+	pvalue									/// display p-value statistics (min/max p-values, and minimum costs. If pythonno is not specified this only works with vanilla 'OLS regression')
+	critval(real 0.05) 						/// Specifies the alpha level where we speak of statistical significance. Only relevant when pvalue is specified. 
+	alpha(real 2)							/// Specifies the alpha parameter for the cost function (default: 2)
+	theil									/// Use normalized Theil index as cost function (overrides alpha option)  
+	revpoint(real 0)					/// Specifies the target value for sign reversal (default: 0)
 	keep(string) 							/// Specifies list of variables to be kept in the displayed results table(s).
 	dstub(string) 							/// Specifies that the binary dummy should be saved and storted in a stub specified by string.
-	MAX_attempts(integer 50000)				/// Cap on number of cra_solve_face calls in analytical search. Ignored when python is specified.
 	]		
 
 	qui {
 	
 	*-------------------------------------
-	*	1.1 Option logic and warnings
+	*	1.1 Set default behavior and option logic
 	*-------------------------------------
 	
-	* Default is the analytical search. The `python' option switches to numerical
-	* optimisation. Warn about options that are ignored under the chosen routine.
-	
-	if "`python'" == "" {
-		* Analytical routine in use - python-only options are ignored.
-		local _ignored_py ""
-		if "`pvalue'"   != ""    local _ignored_py "`_ignored_py' pvalue"
-		if `critval'    != 0.05  local _ignored_py "`_ignored_py' critval()"
-		if `alpha'      != 2     local _ignored_py "`_ignored_py' alpha()"
-		if "`theil'"    != ""    local _ignored_py "`_ignored_py' theil"
-		if `revpoint'   != 0     local _ignored_py "`_ignored_py' revpoint()"
-		if "`_ignored_py'" != "" {
-			noi dis as err "Note: the following option(s) are ignored when the python option is not specified:`_ignored_py'."
-		}
-	}
-	else {
-		* Python routine in use - analytical-only options are ignored.
-		if `max_attempts' != 50000 {
-			noi dis as err "Note: the max_attempts() option is ignored when the python option is specified."
-		}
-	}
-	
-	* If python is requested, check that numpy and scipy are available.
-	* If not, fall back to the analytical routine.
-	if "`python'" != "" {
+	* Default: use Python for cost minimization, but check if it works. If not, revert to pythonno. 
+	if "`pythonno'" == "" {
 		capture python which numpy
 		if _rc != 0 {
-			noi dis as err "Numpy not available. Falling back to the analytical search."
-			local python ""
+			noi dis "Numpy not available. Reverting to pythonno option."
+			local pythonno "pythonno"
 		}
-	}
-	if "`python'" != "" {
 		capture python which scipy
 		if _rc != 0 {
-			noi dis as err "SciPy not available. Falling back to the analytical search."
-			local python ""
+			noi dis "SciPy not available. Reverting to pythonno option."
+			local pythonno "pythonno"
 		}
+		
 	}
-
+	
+	* IF NOT: Default: use fast routine (unless pythonno + pvalue specified)
+	if "`pythonno'" != "" & "`pvalue'" != "" local fast ""
+	else local fast "fast"
+		
 	*-------------------------------------
 	*	1.2 Housekeeping
 	*-------------------------------------
@@ -120,7 +101,6 @@ program coeff_reverser, rclass
 	sum `depvar', meanonly
 	local scale_min = r(min)
 	local scale_max = r(max)
-	local scale_range = `scale_max' - `scale_min'
 					
 	*Get the labels into a matrix (needed for the python routine)
 	levelsof `depvar', matrow(_labels_depvar)
@@ -129,7 +109,7 @@ program coeff_reverser, rclass
 	tempname signs_mat signs_mat_pos signs_mat_neg
 	mata : st_matrix("`signs_mat_pos'", st_matrix("`orig_b'") :> 0) 		// everything that is positive is 1
 	mata: st_matrix("`signs_mat_neg'", (st_matrix("`orig_b'") :< 0) :* -1)  // everything that is negative is -1
-	matrix `signs_mat' = `signs_mat_pos' + `signs_mat_neg' 					// adds the two to get positive and negative signs.
+	matrix `signs_mat' = `signs_mat_pos' + `signs_mat_neg' 					// adds the two to get positive and negative signs. Working with Stata matrices is tedious. 
 		
 	*=====================================
 	*2. Assess if reversals are at all possible
@@ -185,7 +165,7 @@ program coeff_reverser, rclass
 		else	  matrix `hd_p_vals' = (`hd_p_vals' \ `hd_p_vals_tmp')
 		
 		*Store residuals for p-value analysis (if needed)
-		if "`pvalue'" != "" & "`python'" != "" {
+		if "`pvalue'" != "" {
 			cap drop _hd_residual_`n'
 			predict _hd_residual_`n', residual
 		}
@@ -239,10 +219,10 @@ program coeff_reverser, rclass
 	restore
 
 	*-------------------------------------
-	*2.5 Get minimum and maximum p-value (only if pvalue option specified and python routine in use)
+	*2.5 Get minimum and maximum p-value (only if pvalue option specified)
 	*-------------------------------------
 	
-	if "`pvalue'" != "" & "`python'" != "" {
+	if "`pvalue'" != "" {
 		**Get maximum p-value from hd regressions
 		preserve
 		clear
@@ -278,10 +258,10 @@ program coeff_reverser, rclass
 	}	
 	
 	*=====================================
-	*3. Implement the cost-function approach via Python (when python option specified)
+	*3. Implement the cost-function approach 
 	*=====================================
 
-	if "`python'" != "" {
+	if "`pythonno'"=="" {
 
 		*-------------------------------------
 		*3.1 Some setups
@@ -292,7 +272,7 @@ program coeff_reverser, rclass
 		python clear
 		
 		*-------------------------------------
-		*3.2 Loop over explanatory variable
+		*3.2 Loop over explnatory variable
 		*-------------------------------------
 		
 		preserve
@@ -444,89 +424,177 @@ program coeff_reverser, rclass
 	}
 	
 	*=====================================
-	*4. Analytical active-set search (default; when python option NOT specified)
+	*4. Loop over levels of c to find reversal conditions (only if pythonno specified)
 	*=====================================
 	
-	if "`python'" == "" {
+	if "`pythonno'" != "" {
 		
 		*-------------------------------------
-		*4.1 Setup: get explanatory variable list and number of gaps
+		*4.1 Initialising things 
 		*-------------------------------------
+
+		*Tell the user how many regressions need to be run
+		local N_c = ((`end' - `start')/`precision')+1
+		noisily dis ""
+		noisily dis "Total number of c-values to check: `N_c'. Progress:"
 		
-		local explanatory_vars "`:colnames `orig_b''"
-		local explanatory_vars = subinstr("`explanatory_vars'", "_cons", "",1)
-		
-		local n_gaps = `n_levels_depvar' - 1
-		local ncols_bd = colsof(`tmp_w_mat')
-		
-		*-------------------------------------
-		*4.2 Initialise matrices to hold results
-		*-------------------------------------
-		
-		tempname cost_mat label_mat A_bits_mat n_attempts_mat hit_limit_mat
-		matrix `cost_mat'       = J(1, `ncols_bd', .)
-		matrix `label_mat'      = J(`n_gaps', `ncols_bd', .)
-		matrix `A_bits_mat'     = J(1, `ncols_bd', .)
-		matrix `n_attempts_mat' = J(1, `ncols_bd', .)
-		matrix `hit_limit_mat'  = J(1, `ncols_bd', .)
+		*A counter to keep track of things
+		local iter = 1
 		
 		*-------------------------------------
-		*4.3 Loop over explanatory variables, call the analytical search
+		*4.2 Begin the loop 
 		*-------------------------------------
-		
-		* Counter `n' indexes columns of `tmp_w_mat'. The Python case follows the
-		* same convention: `explanatory_vars' has _cons removed, and n starts at 1,
-		* matching the position in `tmp_w_mat' (which assumes _cons is last).
-		* Note: revpoint is always 0 in this branch (option is python-only).
-		local n = 1
-		foreach explanatory_var of local explanatory_vars {
+
+		forvalues c=`start'(`precision')`end'{
 			
-			*Extract the column of dichotomised coefficients for this covariate
-			tempname bd_col
-			matrix `bd_col' = `tmp_w_mat'[1..`n_gaps', `n']
+			*-------------------------------------
+			*4.3 Get minus sign before the exp() function for negative c
+			*-------------------------------------
+
+			if `c' < 0 	local minus "-"
+			if `c' > 0	local minus ""
 			
-			*Quick feasibility check against 0: if 0 outside bounds, skip (leave entries as missing)
-			tempname bd_min bd_max
-			mata: st_local("min_bd", strofreal(min(st_matrix("`bd_col'"))))
-			mata: st_local("max_bd", strofreal(max(st_matrix("`bd_col'"))))
-			
-			if (0 > -1*`scale_range'*`min_bd') | (0 < -1*`scale_range'*`max_bd') {
-				local ++n
-				continue
+			*=====================================
+			*4.4 Run the fast routine
+			*=====================================
+
+			if "`fast'"=="fast" {
+				
+				*-------------------------------------
+				*4.4.1 Get a rescaled version of the original variable
+				*-------------------------------------
+
+				tempvar trans_depvar
+				if (`c' < 0.0000001 & `c' > -0.0000001) gen `trans_depvar' = `depvar' // I.e. if c==0
+				else {
+					gen `trans_depvar' = ((`minus'exp(`depvar'*`c') - `minus'exp(`scale_min'*`c')) / (`minus'exp(`scale_max'*`c') - `minus'exp(`scale_min'*`c')))*(`scale_max'-`scale_min') + `scale_min'
+				}
+
+				*-------------------------------------
+				*4.4.2 Get a matrix to record differences in labels
+				*-------------------------------------
+
+				matrix `dlabels' = J(`nrows_d_result',`nrows_d_result',0)
+				local n = 0
+				levelsof `trans_depvar', local(levels_trans_depvar)
+				foreach l of local levels_trans_depvar {
+					if `n'==0 {
+						local k = `l' 	// k here denotes the previous label. Do nothing in the first iteration and just update k for the next iteration.
+					}
+					else { 				// produces a diagonal matrix with the right dimensions to multiply.
+						capture matrix `dlabels'[`n',`n'] = `k'-`l'  									// Again weird condition because of rounding errors from floating points.
+						local k = `l' 	// Store l in k for the next iteration. 
+					}
+					local ++n
+				}
+				
+				*-------------------------------------
+				*4.4.3 Use the results from regressions of hd to arrive at the transformed coefficients. 
+				*-------------------------------------
+
+				*Take the dmat result and multiply each element by the matrix recording differences of labels
+				matrix `tmp1' = `dlabels' * `tmp_w_mat'
+				
+				*Take the column-wise sum:
+				matrix `tmp1' = J(1,rowsof(`tmp1'),1)*`tmp1' 
+				
+				*Store result in the b_result matrix
+				if `c'==`start' matrix `b_result' = (`tmp1')
+				if `c'!=`start' matrix `b_result' = (`b_result' \ `tmp1')
+				
+			}
+				
+			*=====================================
+			*4.5 Run the slow routine (only needed when interest is in p-values.)
+			*=====================================
+
+			if "`fast'" == "" {
+				
+				*-------------------------------------
+				*4.5.1 Create transformed depvar and run the regression
+				*-------------------------------------
+				
+				*Create transformed depvar			
+				tempvar trans_depvar
+				if (`c' < 0.0000001 & `c' > -0.0000001) gen `trans_depvar' = `depvar' 
+				else {
+					gen double `trans_depvar' = ((`minus'exp(`depvar'*`c') - `minus'exp(`scale_min'*`c')) / (`minus'exp(`scale_max'*`c') - `minus'exp(`scale_min'*`c')))*(`scale_max'-`scale_min') + `scale_min'
+				}
+				*Get the command to run
+				local to_run = subinword("`full_command'", "`depvar'", "`trans_depvar'", 1) 	// changes the dependent variable of the command originally run.
+				
+				*Run the regression
+				`to_run'
+
+				*Save results
+				matrix `tmp1' = e(b)
+				matrix `tmp2' = vecdiag(e(V))	
+							
+				*-------------------------------------
+				*4.5.2 Get p-values and put coefficients into matrices  
+				*-------------------------------------
+				
+				*Put coefficients into a results-matrix		
+				if `c'==`start' matrix `b_result' = (`tmp1')			
+				if `c'!=`start' matrix `b_result' = (`b_result' \ `tmp1')
+
+				*Get p-vals and put into a results-matrix
+				tempname tmp_p
+				
+				if `ncluster'!=. capture mata : st_matrix("`tmp_p'", 2*(J(1,`P',1)-t((`ncluster'-1), abs(st_matrix("`tmp1'") :/ sqrt(st_matrix("`tmp2'")))))) 			
+				if `ncluster'==. capture mata : st_matrix("`tmp_p'", 2*(J(1,`P',1)-t((`N'-`P'), abs(st_matrix("`tmp1'") :/ sqrt(st_matrix("`tmp2'")))))) 
+
+				if `c'!=`start' matrix `p_result' = (`p_result' \ `tmp_p')
+				if `c'==`start' matrix `p_result' = (`tmp_p')
+
+				
 			}
 			
-			*Call the Mata search routine
-			tempname result_row
-			mata: st_matrix("`result_row'", cra_search(st_matrix("`bd_col'"), `n_gaps', `max_attempts'))
-			
-			*Unpack: (C, Delta_1, ..., Delta_{n_gaps}, A_bits, n_attempts, hit_limit)
-			matrix `cost_mat'[1, `n']       = `result_row'[1, 1]
-			matrix `A_bits_mat'[1, `n']     = `result_row'[1, `n_gaps' + 2]
-			matrix `n_attempts_mat'[1, `n'] = `result_row'[1, `n_gaps' + 3]
-			matrix `hit_limit_mat'[1, `n']  = `result_row'[1, `n_gaps' + 4]
-			
-			*Store the optimal gap vector as a column of label_mat
-			forvalues k = 1/`n_gaps' {
-				matrix `label_mat'[`k', `n'] = `result_row'[1, `k' + 1]
-			}
-			
-			local ++n
+			*Display progress
+			noisily _dots `iter' 0
+			local ++iter
 		}
+			
+		*=====================================
+		*4.6 Use transformed estimates from any of the routines to find points of reversal across c
+		*=====================================
 		
-		*-------------------------------------
-		*4.4 Drop the column corresponding to _cons (if any) so matrices align with the Python case
-		*-------------------------------------
+		preserve
+		clear
 		
-		* `tmp_w_mat' includes _cons as the last column. We trim cost_mat, label_mat,
-		* A_bits_mat, n_attempts_mat, and hit_limit_mat to drop that column too, so
-		* they have the same dimension as the corresponding Python outputs.
-		local m = `ncols_bd' - 1
-		matrix `cost_mat'       = `cost_mat'[1, 1..`m']
-		matrix `A_bits_mat'     = `A_bits_mat'[1, 1..`m']
-		matrix `n_attempts_mat' = `n_attempts_mat'[1, 1..`m']
-		matrix `hit_limit_mat'  = `hit_limit_mat'[1, 1..`m']
-		matrix `label_mat'      = `label_mat'[1..`n_gaps', 1..`m']
-	}
+		svmat double `b_result', names(variable)
+		qui gen tmpvar = _n
+		qui tsset tmpvar
+		foreach var of varlist variable1-variable`P' {
+			if "`var'" == "tmpvar" continue, break  
+			qui replace `var' = `var'>`revpoint' 		// 1 if positive, 0 otherwise
+			qui gen double new`var' = d.`var' 	// missing in the first instance, then -1 if pos to neg, and 1 if neg to pos, 0 if the same.
+		}
+		keep newvariable1-newvariable`P'
+		tempname r_result
+		mkmat newvariable1-newvariable`P', matrix(`r_result')
+		
+		*=====================================
+		*4.7 Use p-value estimates from to find points of significant reversal across c (only for slow routine)
+		*=====================================
+		
+		if "`fast'"=="" {
+			clear
+			svmat double `p_result', names(variable)	
+			qui gen tmpvar = _n
+			qui tsset tmpvar	
+			foreach var of varlist variable1-variable`P' {
+				if "`var'" == "tmpvar" continue, break  
+				qui replace `var' = (`var'-`critval')<0 	// 1 if significant, 0 if insifnificant
+				qui gen double new`var' = d.`var' 			// missing in the first instance, then -1 if significant to insignificant, and 1 if insignificant to significant, 0 if the same.
+			}		
+			keep newvariable1-newvariable`P'
+			tempname y_result
+			mkmat newvariable1-newvariable`P', matrix(`y_result')
+		}
+		restore
+	
+	} // End of pythonno conditional
 	
 	*=====================================
 	*5. Clean-up matrices
@@ -536,21 +604,210 @@ program coeff_reverser, rclass
 	*5.1 Get the original variable names as column names 
 	*-------------------------------------
 
-	matrix colnames `label_mat'      = `explanatory_vars'
-	matrix colnames `cost_mat'       = `explanatory_vars'
-	if "`python'" == "" {
-		matrix colnames `A_bits_mat'     = `explanatory_vars'
-		matrix colnames `n_attempts_mat' = `explanatory_vars'
-		matrix colnames `hit_limit_mat'  = `explanatory_vars'
+	* Only set column names for matrices that exist
+	if "`pythonno'" == "" {
+		matrix colnames `label_mat'=`explanatory_vars'
+		matrix colnames `cost_mat'=`explanatory_vars'
+	}
+	
+	if "`pythonno'" != "" {
+		matrix colnames `b_result'=`:colnames `tmp_w_mat'' 
+		matrix colnames `r_result'=`:colnames `tmp_w_mat'' 
+		if "`fast'"=="" matrix colnames `p_result'=`:colnames `tmp_w_mat'' 
+		if "`fast'"=="" matrix colnames `y_result'=`:colnames `tmp_w_mat''
 	}
 	
 	matrix colnames `d_result'=`:colnames `tmp_w_mat'' 
 	matrix colnames `hd_p_vals'=`:colnames `tmp_w_mat'' 
+	
+	*-------------------------------------
+	*5.2 Attach the corresponding value of c to the results matrices (only if pythonno)
+	*-------------------------------------
+	
+	if "`pythonno'" != "" {
+		local n = 1
+		tempname c_vals
+		matrix `c_vals' = J(rowsof(`b_result'),1,.)
+		forvalues c=`start'(`precision')`end'{
+			capture matrix `c_vals'[`n',1] = `c' // not sure why there's a capture here. 
+			local ++n
+		}
+		
+		matrix `b_result' = (`b_result', `c_vals')
+		matrix `r_result' = (`r_result', `c_vals') 	
+		
+		if "`fast'"=="" matrix `p_result' = (`p_result', `c_vals') 
+		if "`fast'"=="" matrix `y_result' = (`y_result', `c_vals')
+	} 
 
 	*=====================================
-	*6. Prepare for main display to user
+	*6. Preparare for main display to user
 	*=====================================
 	
+	*-------------------------------------
+	*6.1 Get minimum c-value (only if pythonno option specified)
+	*-------------------------------------
+
+	if "`pythonno'" != "" {
+		preserve
+		clear
+		local c_num = colsof(`r_result')
+		local c_num1 = `c_num' - 1
+		local c_num2 = `c_num' - 2
+		
+		svmat `r_result', names(tmp)
+		gen orig_c = tmp`c_num' 
+		
+		forvalues j=1/`c_num' {
+			replace tmp`j' = abs(tmp`j') 	
+		}
+		forvalues j=1/`c_num1' {
+			sum tmp`c_num' if tmp`j'==1
+			sum orig_c if tmp`c_num'==r(min) & tmp`j'==1
+			replace tmp`j' = r(mean) 	
+		}
+		keep if _n==1
+		tempname min_c_value
+		mkmat tmp1-tmp`c_num1', matrix(`min_c_value')
+		restore
+	}
+	
+	if "`pythonno'" != "" & "`pvalue'" != "" & "`fast'" == "" {
+
+		*-------------------------------------
+		*6.1.1 Get minimum c-value to render significant coefficient insignificant
+		*-------------------------------------
+
+		/*
+		Gameplan:
+		Step 1: Only keep the matrix for positive c. Find first -1.
+		Step 2: Only keep the matrix for negative c. Take absolute value of c, sort on c. Find first 1.
+		Step 3: Combine and find smallest c. 
+		*/ 
+		
+		*Step 1:
+		preserve
+		clear
+		svmat `y_result', names(tmp)
+		keep if tmp`c_num' >= 0
+
+		forvalues j=1/`c_num2' {
+			sum tmp`c_num' if tmp`j'==-1
+			replace tmp`j' = r(min) 	
+		}
+		keep if _n==1
+		tempname min_cp_value1
+		mkmat tmp1-tmp`c_num2', matrix(`min_cp_value1')
+		restore
+		
+		
+		*Step 2:
+		if `start' < 0 {
+			preserve
+			clear
+			svmat `y_result', names(tmp)
+			keep if tmp`c_num' < 0
+			replace tmp`c_num' = abs(tmp`c_num')
+			sort tmp`c_num'
+			forvalues j=1/`c_num2' {
+				sum tmp`c_num' if tmp`j'==1
+				replace tmp`j' = r(min) 	
+			}
+			keep if _n==1
+			tempname min_cp_value2
+			mkmat tmp1-tmp`c_num2', matrix(`min_cp_value2')
+			restore
+		}
+		
+		*Step 3:
+		tempname combined
+		if `start' < 0 	matrix `combined' = `min_cp_value1' \ `min_cp_value2'
+		else 			matrix `combined' = `min_cp_value1'
+		preserve 
+		clear
+		svmat `combined', names(tmp)
+		gen sign = 1 in 1
+		if `start' < 0 replace sign = -1 in 2
+		
+		forvalues j=1/`c_num2' {
+			sum tmp`j' 
+			sum sign if tmp`j' == r(min)
+			local sign = r(mean)
+			sum tmp`j' 		
+			replace tmp`j' = r(min) * `sign'	
+		}
+		keep if _n==1
+		tempname min_cp_value
+		mkmat tmp1-tmp`c_num2', matrix(`min_cp_value')
+		restore
+		
+		*-------------------------------------
+		*6.1.2 Get minimum c-value to render insignificant coefficient significant
+		*-------------------------------------
+		
+		/*
+		Gameplan:
+		Step 1: Only keep the matrix for positive c. Find first 1.
+		Step 2: Only keep the matrix for negative c. Take absolute value of c, sort on c. Find first -1.
+		Step 3: Combine and find smallest c. 
+		*/ 
+
+		*Step 1:
+		preserve
+		clear
+		svmat `y_result', names(tmp)
+		keep if tmp`c_num' >= 0
+
+		forvalues j=1/`c_num2' {
+			sum tmp`c_num' if tmp`j'==1
+			replace tmp`j' = r(min) 	
+		}
+		keep if _n==1
+		tempname min_cp2_value1
+		mkmat tmp1-tmp`c_num2', matrix(`min_cp2_value1')
+		restore
+		
+		
+		*Step 2:
+		if `start' < 0 {
+			preserve
+			clear
+			svmat `y_result', names(tmp)
+			keep if tmp`c_num' < 0
+			replace tmp`c_num' = abs(tmp`c_num')
+			sort tmp`c_num'
+			forvalues j=1/`c_num2' {
+				sum tmp`c_num' if tmp`j'==-1
+				replace tmp`j' = r(min) 	
+			}
+			keep if _n==1
+			tempname min_cp2_value2
+			mkmat tmp1-tmp`c_num2', matrix(`min_cp2_value2')
+			restore
+		}
+		
+		*Step 3:
+		tempname combined
+		if `start' < 0 	matrix `combined' = `min_cp2_value1' \ `min_cp2_value2'
+		else			matrix `combined' = `min_cp2_value1' 
+		preserve 
+		clear
+		svmat `combined', names(tmp)
+		gen sign = 1 in 1
+		if `start' < 0 replace sign = -1 in 2
+		
+		forvalues j=1/`c_num2' {
+			sum tmp`j' 
+			sum sign if tmp`j' == r(min)
+			local sign = r(mean)
+			sum tmp`j' 		
+			replace tmp`j' = r(min) * `sign'	
+		}
+		keep if _n==1
+		tempname min_cp2_value
+		mkmat tmp1-tmp`c_num2', matrix(`min_cp2_value')
+		restore	
+	}
 	*-------------------------------------
 	*6.2 Get matrices into the right format, find original p-values, construct display matrix, implement the "keep()" option.
 	*-------------------------------------
@@ -564,13 +821,18 @@ program coeff_reverser, rclass
 	matrix `orig_b_display' = `orig_b'[1...,1..`npcols']
 	
 	*Minimum and maximum p-value (only if computed)
-	if "`pvalue'" != "" & "`python'" != "" {
+	if "`pvalue'" != "" {
 		matrix `max_pval' = `max_pval'[1...,1..`npcols'] 
 		matrix `min_pval' = `min_pval'[1...,1..`npcols'] 
 	}
 	
-	*Original p-value (compute if pvalue option specified and python routine in use)
-	if "`pvalue'" != "" & "`python'" != "" {
+	*Minimum c-value (only if computed)
+	if "`pythonno'" != "" {
+		matrix `min_c_value' = `min_c_value'[1...,1..`npcols']
+	}
+
+	*Original p-value (only compute if pvalue option specified)
+	if "`pvalue'" != "" {
 		tempname orig_ses
 		matrix `orig_ses' = vecdiag(`orig_v')
 		tempname orig_p_display
@@ -623,7 +885,7 @@ program coeff_reverser, rclass
 	
 
 	*-------------------------------------
-	*6.3 Assemble the matrices to be displayed
+	*6.3 Assemble the matricies to be displayed
 	*-------------------------------------
 	
 	tempname _to_display
@@ -631,25 +893,46 @@ program coeff_reverser, rclass
 	matrix `_to_display' = `_to_display' \ `coeff_lower_bounds'
 	matrix `_to_display' = `_to_display' \ `coeff_upper_bounds'
 		
-	* Both routines now produce a cost_mat. Append it unconditionally if present.
-	capture confirm matrix `cost_mat'
-	if _rc == 0 {
-		matrix `_to_display' = `_to_display' \ `cost_mat'
+	* Default behavior: Show only Python cost (if it exists)
+	if "`pythonno'"=="" {
+		capture confirm matrix `cost_mat'
+		if _rc == 0 {
+			matrix `_to_display' = `_to_display' \ `cost_mat'
+		}
 	}
 	
-	* pvalue option: Show p-value statistics (only when using Python routine)
-	if "`pvalue'" != "" & "`python'" != "" {
+	* pythonno behavior: Show minimum c-value (if it exists)
+	if "`pythonno'" != "" {
+		capture confirm matrix `min_c_value'
+		if _rc == 0 {
+			matrix `_to_display' = `_to_display' \ `min_c_value'
+		}
+	}
+	
+	* pvalue option: Show p-value statistics
+	if "`pvalue'" != "" {
+		* Show original p-value, then p-value bounds (from hd regressions)
 		matrix `_to_display' = `_to_display' \ `orig_p_display' \ `min_pval' \ `max_pval'
 	}
 	
-	* Show cost for p-value reversals (python case only)
-	if "`pvalue'" != "" &  "`python'" != "" {
+	* Show cost for p-value reversals (python case)
+	if "`pvalue'" != "" &  "`pythonno'" == "" {
 		mat `costs_pval_python' = `costs_pval_python''
 		local ncols_for_pvals = colsof(`costs_pval_python') - 1
 		mat `costs_pval_python' = `costs_pval_python'[1,1..`ncols_for_pvals']	
 		matrix `_to_display' = `_to_display' \ `costs_pval_python'
-	}
 		
+		* Show original p-values from Python (for debugging)
+		// mat `orig_pval_python' = `orig_pval_python''
+		// mat `orig_pval_python' = `orig_pval_python'[1,1..`ncols_for_pvals']
+		// matrix `_to_display' = `_to_display' \ `orig_pval_python'
+	}
+	
+	* Show cost for p-value reversals (non-python case)
+	if "`pvalue'" != "" &  "`pythonno'" != "" {
+		matrix `_to_display' = `_to_display' \ `min_cp_value'
+	}
+	
 	*Implement keep option
 	if "`keep'" != "" matselrc `_to_display' `_to_display', c(`keep') 
 	
@@ -668,13 +951,24 @@ program coeff_reverser, rclass
 	local display_labels "Coef"
 	local display_labels "`display_labels'" "Min.coef" "Max.coef"  
 	
-	capture confirm matrix `cost_mat'
-	if _rc == 0 {
-		local display_labels "`display_labels'" "Min.cost"
+	* Default behavior: Show only Python cost (if it exists)
+	if "`pythonno'"=="" {
+		capture confirm matrix `cost_mat'
+		if _rc == 0 {
+			local display_labels "`display_labels'" "Min.cost"
+		}
 	}
 	
-	* pvalue option: Show p-value statistics (only with Python routine)
-	if "`pvalue'" != "" & "`python'" != "" {
+	* pythonno behavior: Show minimum c-value (if it exists)
+	if "`pythonno'" != "" {
+		capture confirm matrix `min_c_value'
+		if _rc == 0 {
+			local display_labels "`display_labels'" "Min.c"
+		}
+	}
+	
+	* pvalue option: Show p-value statistics
+	if "`pvalue'" != "" {
 		local display_labels "`display_labels'" "P-val" "Min.p-val" "Max.p-val"
 		
 		* Add cost label for p-value target (only if computed by Python for non-clustered SEs)
@@ -683,12 +977,26 @@ program coeff_reverser, rclass
 			if _rc == 0 {
 				local display_labels "`display_labels'" "Min.cost.sig."
 			}
+			// capture confirm matrix `orig_pval_python'
+			// if _rc == 0 {
+			//	local display_labels "`display_labels'" "Py.Pval"
+			// }
 		}
 	}
 	
+	* Show minimum c-value for significance change label (displayed last, if it exists)
+	if "`pythonno'" != "" {
+		capture confirm matrix `min_cp_value'
+		if _rc == 0 {
+			local display_labels "`display_labels'" "Min.c.sig."
+		}
+	}
 	
 	*Notes
-	local notes "Note: {bf:Missing values imply one of the following:} `=char(13)' (1) That no original coefficient was estimated. `=char(13)' (2) That no reversal is possible. `=char(13)'"
+	local notes "Note: {bf:Missing values imply one of the following:} `=char(13)' (1) That no original coefficient was estimated. `=char(13)' (2) That no reversal is possible. `=char(13)' (3) That the minimum reversing c-value falls outside the search range. `=char(13)'"
+	if "`pythonno'" != "" & "`pvalue'" != "" & "`fast'" == "" {
+		local notes `notes' "(4) That coefficients cannot be made significant or insignificant within the search range."
+	}
 	
 	
 	*=====================================
@@ -718,40 +1026,34 @@ program coeff_reverser, rclass
 		dis "Min.coef: Lower bound of coefficient across hd transformations"
 		dis "Max.coef: Upper bound of coefficient across hd transformations"
 		
-		capture confirm matrix `cost_mat'
-		if _rc == 0 {
-			if "`python'" == "" {
-				dis "Min.cost: Minimum cost for coefficient sign reversal (analytical search)"
-			}
-			else {
+		if "`pythonno'"=="" {
+			capture confirm matrix `cost_mat'
+			if _rc == 0 {
 				dis "Min.cost: Minimum cost for coefficient sign reversal (Python optimization)"
 			}
 		}
-				
-		if "`pvalue'" != "" & "`python'" != "" {
+		
+		if "`pythonno'" != "" {
+			capture confirm matrix `min_c_value'
+			if _rc == 0 {
+				dis "Min.c: Minimum c-value for coefficient sign reversal (exponential transformation)"
+			}
+		}
+		
+		if "`pvalue'" != "" {
 			dis "P-val: Original p-value from fitted model"
 			dis "Min.p-val: Minimum p-value across hd transformations"
 			dis "Max.p-val: Maximum p-value across hd transformations"
 			capture confirm matrix `costs_pval_python'
 			if _rc == 0 {
-				dis "Min.cost.sig.: Minimum cost for statistical significance reversal"
+					dis "Min.cost.sig.: Minimum cost for statistical significance reversal"
 			}
 		}
-
-		*-------------------------------------
-		*7.3 If analytical search hit the cap anywhere, warn
-		*-------------------------------------
 		
-		if "`python'" == "" {
-			tempname hit_any
-			mata: st_local("hit_any_val", strofreal(max(st_matrix("`hit_limit_mat'"))))
-			if "`hit_any_val'" != "" & "`hit_any_val'" != "." {
-				if `hit_any_val' == 1 {
-					dis ""
-					dis as err "WARNING: For at least one coefficient, the analytical search reached the cap of `max_attempts' calls."
-					dis as err "         Reported minimum costs may not be the global optimum for those coefficients."
-					dis as err "         See r(hit_limit) for which coefficients are affected. Your may want to increase max_attempts()."
-				}
+		if "`pythonno'" != "" {
+			capture confirm matrix `min_cp_value'
+			if _rc == 0 {
+				dis "Min.c.sig.: Minimum c-value for statistical significance reversal"
 			}
 		}
 	}
@@ -780,7 +1082,7 @@ program coeff_reverser, rclass
 	matrix colnames `return_b' = `var_names'
 	return matrix b `return_b'
 	
-	* r(minb) and r(maxb) - Coefficient bounds
+	* r(minb) and r(maxb) - Coefficient bounds (only if bounds computed)
 	tempname return_minb return_maxb
 	matrix `return_minb' = `coeff_lower_bounds'
 	matrix `return_maxb' = `coeff_upper_bounds'
@@ -791,43 +1093,36 @@ program coeff_reverser, rclass
 	
 	
 	*-------------------------------------
-	*8.4 Return minimum reversing c-values and (if analytical) the diagnostic matrices
+	*8.4 Return minimum reversing c-values
 	*-------------------------------------
 	
-	capture confirm matrix `cost_mat'
-	if _rc == 0 {
-		tempname return_cost
-		matrix `return_cost' = `cost_mat'
-		matrix colnames `return_cost' = `var_names'
-		return matrix cost `return_cost'
+	* r(minc) - Minimum c-values for coefficient reversal
+	if "`pythonno'" != "" {
+		capture confirm matrix `min_c_value'
+		if _rc == 0 {
+			tempname return_minc
+			matrix `return_minc' = `min_c_value'
+			matrix colnames `return_minc' = `var_names'
+			return matrix minc `return_minc'
+		}
 	}
 	
-	* Analytical-only diagnostic matrices
-	if "`python'" == "" {
-		tempname return_labels return_Abits return_nattempts return_hitlimit
-		
-		matrix `return_labels' = `label_mat'
-		matrix colnames `return_labels' = `var_names'
-		return matrix Delta_star `return_labels'
-		
-		matrix `return_Abits' = `A_bits_mat'
-		matrix colnames `return_Abits' = `var_names'
-		return matrix A_bits `return_Abits'
-		
-		matrix `return_nattempts' = `n_attempts_mat'
-		matrix colnames `return_nattempts' = `var_names'
-		return matrix n_attempts `return_nattempts'
-		
-		matrix `return_hitlimit' = `hit_limit_mat'
-		matrix colnames `return_hitlimit' = `var_names'
-		return matrix hit_limit `return_hitlimit'
+	* Return Python cost matrix if available
+	if "`pythonno'" == "" {
+		capture confirm matrix `cost_mat'
+		if _rc == 0 {
+			tempname return_cost
+			matrix `return_cost' = `cost_mat'
+			matrix colnames `return_cost' = `var_names'
+			return matrix cost `return_cost'
+		}		
 	}
 	
 	*-------------------------------------
-	*8.5 Return p-value matrices (Python case only)
+	*8.5 Return p-value matrices
 	*-------------------------------------
 	
-	if "`pvalue'" != "" & "`python'" != "" {
+	if "`pvalue'" != "" {
 		* r(p) - Original p-values
 		tempname return_p
 		matrix `return_p' = `orig_p_display'
@@ -856,7 +1151,22 @@ program coeff_reverser, rclass
 	}
 	
 	*-------------------------------------
-	*8.6 Return additional matrices for advanced users
+	*8.6 Return minimum c-values for significance reversal
+	*-------------------------------------
+	
+	* r(mincp) - Minimum c-values for significance change
+	if "`pythonno'" != "" {
+		capture confirm matrix `min_cp_value'
+		if _rc == 0 {
+			tempname return_mincp
+			matrix `return_mincp' = `min_cp_value'
+			matrix colnames `return_mincp' = `var_names'
+			return matrix mincp `return_mincp'
+		}
+	}
+	
+	*-------------------------------------
+	*8.7 Return additional matrices for advanced users
 	*-------------------------------------
 	
 	* Return internal matrices
@@ -867,216 +1177,32 @@ program coeff_reverser, rclass
 	matrix colnames `return_hdp' = `var_names'
 	return matrix d `return_d' 
 	return matrix hdp `return_hdp'
-			
+	
+	if "`pythonno'" != "" {
+		capture confirm matrix `b_result'
+		if _rc == 0 {
+			return matrix b_full `b_result' 
+			return matrix r_full `r_result'
+		}
+		
+		* Only return p-value matrices if slow routine was used
+		if "`pvalue'" != "" & "`fast'" == "" {
+			capture confirm matrix `p_result'
+			if _rc == 0 {
+				return matrix p_full `p_result' 
+				return matrix y_full `y_result'
+			}
+		}
+	} 
+		
 	*=====================================
 	*9. Restore the original model.
 	*=====================================
 	
 	cap drop _hd_residual*
-	cap matrix drop _labels_depvar
+	matrix drop _labels_depvar
 	qui estimates restore `prevmodel'
 	
 	}	// ends the qui condition
 	
-end
-
-
-*========================================
-* 10. Get the mata functions
-*========================================
-
-clear mata
-mata:
-
-//-------------------------------------
-//10.1 Solver for particular active set
-//-------------------------------------
-
-real rowvector cra_solve_face(real colvector b, real scalar A_bits, real scalar n_gaps)
-{
-    // Closed-form solution of the reduced problem on a single face.
-    // Returns (C, Delta_1, ..., Delta_n_gaps) as a row vector,
-    // or a row of missing values if the reduced problem is degenerate
-    // (M < 2 or zero variance of free dichotomised coefficients).
-
-    real colvector active, free, Delta
-    real scalar k, M, mu, V, C
-
-    active = J(n_gaps, 1, 0)
-    for (k = 1; k <= n_gaps; k++) {
-        active[k] = mod(floor(A_bits / 2^(k - 1)), 2)
-    }
-    free = 1 :- active
-    M    = sum(free)
-    if (M < 2) return(J(1, n_gaps + 1, .))
-
-    mu = sum(b :* free) / M
-    V  = sum(((b :- mu):^2) :* free) / M
-    if (V < 1e-15) return(J(1, n_gaps + 1, .))
-
-    Delta = (1/M :- mu * (b :- mu) / (M * V)) :* free
-    C     = sqrt(n_gaps / (n_gaps - 1) * sum((Delta :- 1/n_gaps):^2))
-    return((C, Delta'))
-}
-
-//-------------------------------------
-//10.2 Naive start (using two blocks and weighting them to get sign reversal)
-//-------------------------------------
-
-real rowvector cra_naive_feasible(real colvector b, real scalar n_gaps)
-{
-    // Closed-form two-block warm start.
-
-    real scalar S_pos, S_neg, n_pos, n_neg, n_zero, lambda, T, C, k
-    real colvector Delta
-
-    S_pos  = 0
-    S_neg  = 0
-    n_pos  = 0
-    n_neg  = 0
-    n_zero = 0
-    for (k = 1; k <= n_gaps; k++) {
-        if (b[k] > 0) {
-            S_pos = S_pos + b[k]
-            n_pos = n_pos + 1
-        }
-        else if (b[k] < 0) {
-            S_neg = S_neg + b[k]
-            n_neg = n_neg + 1
-        }
-        else {
-            n_zero = n_zero + 1
-        }
-    }
-
-    if (n_pos == 0 | n_neg == 0) return(J(1, n_gaps + 1, .))
-
-    lambda = -S_pos / S_neg
-    T      = lambda * n_neg + n_pos + n_zero
-
-    Delta = J(n_gaps, 1, .)
-    for (k = 1; k <= n_gaps; k++) {
-        if (b[k] < 0) Delta[k] = lambda / T
-        else          Delta[k] = 1 / T
-    }
-
-    C = abs(lambda - 1) / T * sqrt(n_neg * (n_pos + n_zero) / (n_gaps - 1))
-
-    return((C, Delta'))
-}
-
-//-------------------------------------
-//10.3 Search routine. Exploits the fact that cost of child of active set must be weakly larger than that of parent
-//-------------------------------------
-
-
-real rowvector cra_search(real colvector b, real scalar n_gaps, real scalar max_attempts)
-{
-    // Active-set search with cost-based pruning and a closed-form warm start.
-    //
-    // Returns 1 x (n_gaps + 4):
-    //   (best_C, best_Delta_1, ..., best_Delta_n_gaps, best_A_bits,
-    //    n_attempts, hit_limit).
-
-    real scalar best_C, best_A_bits, max_level, level
-    real scalar i, k, A, parent_A, child_A
-    real scalar attempts, hit_limit
-    real colvector best_Delta, Delta
-    real colvector current_frontier, current_costs
-    real colvector new_frontier, new_costs
-    real colvector candidates, keep
-    real rowvector sol, naive_sol
-
-    max_level   = n_gaps - 1
-    best_C      = .
-    best_Delta  = J(n_gaps, 1, .)
-    best_A_bits = -1
-    attempts    = 0
-    hit_limit   = 0
-
-    // Level 0
-    sol      = cra_solve_face(b, 0, n_gaps)
-    attempts = attempts + 1
-    if (sol[1, 1] == .) {
-        return((., J(1, n_gaps, .), -1, attempts, hit_limit))
-    }
-
-    Delta = sol[1, 2..(n_gaps + 1)]'
-    if (min(Delta) >= -1e-10) {
-        return((sol[1, 1], Delta', 0, attempts, hit_limit))
-    }
-
-    // Closed-form naive warm start (free)
-    naive_sol = cra_naive_feasible(b, n_gaps)
-    if (naive_sol[1, 1] == .) {
-        return((., J(1, n_gaps, .), -1, attempts, hit_limit))
-    }
-    best_C      = naive_sol[1, 1]
-    best_Delta  = naive_sol[1, 2..(n_gaps + 1)]'
-    best_A_bits = -2
-
-    if (attempts >= max_attempts) {
-        hit_limit = 1
-        return((best_C, best_Delta', best_A_bits, attempts, hit_limit))
-    }
-
-    // BFS over faces
-    current_frontier = J(1, 1, 0)
-    current_costs    = J(1, 1, sol[1, 1])
-
-    for (level = 1; level <= max_level; level++) {
-
-        keep             = current_costs :< best_C
-        current_frontier = select(current_frontier, keep)
-        current_costs    = select(current_costs,    keep)
-        if (rows(current_frontier) == 0) break
-
-        candidates = J(0, 1, .)
-        for (i = 1; i <= rows(current_frontier); i++) {
-            parent_A = current_frontier[i]
-            for (k = 1; k <= n_gaps; k++) {
-                if (mod(floor(parent_A / 2^(k - 1)), 2) == 0) {
-                    child_A    = parent_A + 2^(k - 1)
-                    candidates = candidates \ child_A
-                }
-            }
-        }
-        if (rows(candidates) == 0) break
-        candidates = uniqrows(candidates)
-
-        new_frontier = J(0, 1, .)
-        new_costs    = J(0, 1, .)
-        for (i = 1; i <= rows(candidates); i++) {
-
-            if (attempts >= max_attempts) {
-                hit_limit = 1
-                break
-            }
-
-            A        = candidates[i]
-            sol      = cra_solve_face(b, A, n_gaps)
-            attempts = attempts + 1
-            if (sol[1, 1] == .) continue
-            if (sol[1, 1] >= best_C) continue
-
-            Delta = sol[1, 2..(n_gaps + 1)]'
-            if (min(Delta) >= -1e-10) {
-                best_C      = sol[1, 1]
-                best_Delta  = Delta
-                best_A_bits = A
-            }
-            else {
-                new_frontier = new_frontier \ A
-                new_costs    = new_costs    \ sol[1, 1]
-            }
-        }
-
-        if (hit_limit) break
-
-        current_frontier = new_frontier
-        current_costs    = new_costs
-    }
-
-    return((best_C, best_Delta', best_A_bits, attempts, hit_limit))
-}
 end

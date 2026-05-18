@@ -17,21 +17,6 @@ ado uninstall reversals
 
 ## Requirements
 
-### Python
-
-Python (including NumPy and SciPy) needs to be available in Stata for full functionality. 
-
-You can check the availability of Python in Stata by typing:
-
-```stata
-python query
-```
-If Python and/or the NumPy and SciPy libraries are unavailable, both `coeff_reverser` and `mrs_reverser` will revert to the `pythonno` option. This option is less capable and only checks for reversals within a small class of functions. For further details see the `help` help file.  
-
-If Numpy and/or SciPy are not installed to your Python environment, you should be able to install them by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
-
-If you get stuck do feel free to contact me (caspar.kaiser@wbs.ac.uk). 
-
 ### Stata
 
 Tested on Stata 17.0. 
@@ -40,13 +25,28 @@ Requires:
 - `estout` by Ben Jann. Can be installed via `ssc install estout`.
 - `matselrc` (from "Yet more matrix commands") by Nick Cox. Can be installed via `net install dm79, from(http://www.stata.com/stb/stb56)`.
 
+### Python
+
+Python (including NumPy and SciPy) needs to be available in Stata for some non-essential functionality. 
+
+You can check the availability of Python in Stata by typing:
+
+```stata
+python query
+```
+If Python and/or the NumPy and SciPy libraries are unavailable, some options in `coeff_reverser` and `mrs_reverser` will not be available. 
+
+If Numpy and/or SciPy are not installed to your Python environment, you should be able to install them by typing `pip install numpy` and `pip install scipy` in the terminal (on macOS) or the command prompt (on Windows).
+
+If you get stuck do feel free to contact me (caspar.kaiser@wbs.ac.uk). 
+
 ## Commands
 
 ### `coeff_reverser`
 Tests coefficient robustness to scale transformations using one of two approaches:
 
-- **Python optimization** (default): Uses Python to find minimal-cost transformations via numerical optimization.
-- **Exponential search** (`pythonno` option): Searches over exponential transformations of the form f(depvar)=exp(c*depvar).
+- **Stata/Mata-based search** (default): Finds minimal-cost transformations using an analytical active-set search implemented in Stata/Mata.
+- **Python-based search** (`python` option): Uses Python to find minimal-cost transformations via numerical optimization.
 
 ### `mrs_reverser` 
 Tests coefficient ratio stability to scale transformations:
